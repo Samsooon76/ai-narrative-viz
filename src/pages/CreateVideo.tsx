@@ -5,9 +5,9 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Wand2, Volume2, Image, Check, Edit2, Loader2, RefreshCw, Download } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/lib/auth";
-import { Navigate, useNavigate } from "react-router-dom";
+import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 
@@ -35,7 +35,9 @@ interface GeneratedImage {
 const CreateVideo = () => {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [currentStep, setCurrentStep] = useState<Step>('topic');
+  const [isLoadingProject, setIsLoadingProject] = useState(false);
   
   // Step 1: Topic
   const [projectName, setProjectName] = useState("");
@@ -55,7 +57,81 @@ const CreateVideo = () => {
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [projectId, setProjectId] = useState<string | null>(null);
 
-  if (loading) {
+  // Load existing project if project ID is in URL
+  useEffect(() => {
+    const projectIdFromUrl = searchParams.get('project');
+    if (projectIdFromUrl && user) {
+      loadProject(projectIdFromUrl);
+    }
+  }, [searchParams, user]);
+
+  const loadProject = async (id: string) => {
+    setIsLoadingProject(true);
+    try {
+      const { data, error } = await supabase
+        .from('video_projects')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (error) throw error;
+
+      // Restore project data
+      setProjectId(data.id);
+      setProjectName(data.title);
+      setTopic(data.prompt || "");
+      
+      if (data.script) {
+        const parsedScript = typeof data.script === 'string' 
+          ? JSON.parse(data.script) 
+          : data.script;
+        setScriptData(parsedScript);
+        setEditedScriptJson(JSON.stringify(parsedScript, null, 2));
+      }
+
+      if (data.images_data) {
+        const imagesData = typeof data.images_data === 'string'
+          ? JSON.parse(data.images_data)
+          : data.images_data;
+        
+        if (typeof imagesData === 'object' && !Array.isArray(imagesData)) {
+          // Convert object to GeneratedImage array
+          const imagesArray: GeneratedImage[] = Object.entries(imagesData).map(([sceneNumber, imageUrl]) => ({
+            sceneNumber: parseInt(sceneNumber),
+            imageUrl: imageUrl as string,
+            prompt: ''
+          }));
+          setGeneratedImages(imagesArray);
+          setSelectedImages(imagesData as Record<number, string>);
+        }
+      }
+
+      // Determine which step to show
+      if (data.status === 'completed' || data.images_data) {
+        setCurrentStep('images');
+      } else if (data.script) {
+        setCurrentStep('script');
+      } else {
+        setCurrentStep('topic');
+      }
+
+      toast({
+        title: "Projet chargé",
+        description: `Projet "${data.title}" ouvert avec succès`
+      });
+    } catch (error: any) {
+      console.error('Erreur chargement projet:', error);
+      toast({
+        title: "Erreur",
+        description: error.message || "Impossible de charger le projet",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoadingProject(false);
+    }
+  };
+
+  if (loading || isLoadingProject) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
@@ -127,22 +203,37 @@ const CreateVideo = () => {
         setScriptData(finalScript);
       }
 
-      // Sauvegarder le projet
-      const { data: project, error: dbError } = await supabase
-        .from('video_projects')
-        .insert({
-          user_id: user.id,
-          title: projectName,
-          prompt: topic,
-          script: JSON.stringify(finalScript),
-          status: 'generating'
-        })
-        .select()
-        .single();
+      // Update existing project or create new one
+      if (projectId) {
+        const { error: updateError } = await supabase
+          .from('video_projects')
+          .update({
+            title: projectName,
+            prompt: topic,
+            script: JSON.stringify(finalScript),
+            status: 'generating'
+          })
+          .eq('id', projectId);
 
-      if (dbError) throw dbError;
+        if (updateError) throw updateError;
+      } else {
+        // Create new project
+        const { data: project, error: dbError } = await supabase
+          .from('video_projects')
+          .insert({
+            user_id: user.id,
+            title: projectName,
+            prompt: topic,
+            script: JSON.stringify(finalScript),
+            status: 'generating'
+          })
+          .select()
+          .single();
+
+        if (dbError) throw dbError;
+        setProjectId(project.id);
+      }
       
-      setProjectId(project.id);
       setCurrentStep('images');
       
       toast({
@@ -637,19 +728,19 @@ const CreateVideo = () => {
                             )}
                           </div>
 
-                          {generatedImage ? (
+                           {generatedImage ? (
                             <div className="relative group">
                               <img 
                                 src={generatedImage.imageUrl} 
                                 alt={`Scène ${scene.scene_number}`}
-                                className="w-full aspect-video object-cover rounded-lg border-2 border-border/40"
+                                className="w-full aspect-[9/16] object-cover rounded-lg border-2 border-border/40"
                               />
                               <div className="absolute top-2 right-2 bg-primary text-primary-foreground px-2 py-1 rounded-md text-xs font-medium">
                                 ✓ Générée
                               </div>
                             </div>
                           ) : (
-                            <div className="w-full aspect-video bg-background/30 rounded-lg border-2 border-dashed border-border/40 flex items-center justify-center">
+                            <div className="w-full aspect-[9/16] bg-background/30 rounded-lg border-2 border-dashed border-border/40 flex items-center justify-center">
                               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                             </div>
                           )}
