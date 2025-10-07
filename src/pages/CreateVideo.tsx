@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Wand2, Sparkles, Volume2, Image, Check, Edit2, Loader2, RefreshCw, ChevronRight, ChevronLeft } from "lucide-react";
+import { Wand2, Volume2, Image, Check, Edit2, Loader2, RefreshCw, Download } from "lucide-react";
 import { useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { Navigate, useNavigate } from "react-router-dom";
@@ -159,10 +159,76 @@ const CreateVideo = () => {
     }
   };
 
-  const generateImageForScene = async () => {
+  const generateAllImages = async () => {
     if (!scriptData) return;
     
-    const currentScene = scriptData.scenes[currentSceneIndex];
+    setIsGeneratingImage(true);
+    const stylePrompt = cinematicStyle 
+      ? `Dark cinematic atmosphere with desaturated teal-green tones, dramatic artificial lighting (yellow/red accents), strong contrasts, human silhouettes in backlight, imposing industrial or military architecture, atmospheric fog/mist, dystopian mysterious ambiance inspired by noir cinema and Simon Stålenhag style.`
+      : `Cinematic, dramatic lighting, high quality, professional video production.`;
+
+    try {
+      const imagePromises = scriptData.scenes.map(async (scene) => {
+        const prompt = `Create a 16:9 image for: ${scene.visual}. Style: ${stylePrompt}`;
+        
+        try {
+          const { data, error } = await supabase.functions.invoke('generate-image', {
+            body: { 
+              prompt,
+              sceneTitle: scene.title 
+            }
+          });
+
+          if (error) throw error;
+          if (!data || !data.imageUrl) {
+            throw new Error('Aucune image générée');
+          }
+
+          return {
+            sceneNumber: scene.scene_number,
+            imageUrl: data.imageUrl,
+            prompt
+          };
+        } catch (error) {
+          console.error(`Erreur scène ${scene.scene_number}:`, error);
+          return null;
+        }
+      });
+
+      const results = await Promise.all(imagePromises);
+      const validImages = results.filter((img): img is GeneratedImage => img !== null);
+      
+      setGeneratedImages(validImages);
+      
+      // Auto-select all generated images
+      const autoSelected: Record<number, string> = {};
+      validImages.forEach(img => {
+        autoSelected[img.sceneNumber] = img.imageUrl;
+      });
+      setSelectedImages(autoSelected);
+
+      toast({
+        title: "Images générées !",
+        description: `${validImages.length}/${scriptData.scenes.length} images créées avec succès`
+      });
+    } catch (error: any) {
+      console.error('Erreur génération images:', error);
+      toast({
+        title: "Erreur",
+        description: error.message || "Impossible de générer les images",
+        variant: "destructive"
+      });
+    } finally {
+      setIsGeneratingImage(false);
+    }
+  };
+
+  const regenerateImage = async (sceneNumber: number) => {
+    if (!scriptData) return;
+    
+    const scene = scriptData.scenes.find(s => s.scene_number === sceneNumber);
+    if (!scene) return;
+
     setIsGeneratingImage(true);
 
     try {
@@ -170,12 +236,12 @@ const CreateVideo = () => {
         ? `Dark cinematic atmosphere with desaturated teal-green tones, dramatic artificial lighting (yellow/red accents), strong contrasts, human silhouettes in backlight, imposing industrial or military architecture, atmospheric fog/mist, dystopian mysterious ambiance inspired by noir cinema and Simon Stålenhag style.`
         : `Cinematic, dramatic lighting, high quality, professional video production.`;
       
-      const prompt = `Create a 16:9 image for: ${currentScene.visual}. Style: ${stylePrompt}`;
+      const prompt = `Create a 16:9 image for: ${scene.visual}. Style: ${stylePrompt}`;
 
       const { data, error } = await supabase.functions.invoke('generate-image', {
         body: { 
           prompt,
-          sceneTitle: currentScene.title 
+          sceneTitle: scene.title 
         }
       });
 
@@ -185,22 +251,31 @@ const CreateVideo = () => {
       }
 
       const newImage: GeneratedImage = {
-        sceneNumber: currentScene.scene_number,
+        sceneNumber: scene.scene_number,
         imageUrl: data.imageUrl,
         prompt
       };
 
-      setGeneratedImages(prev => [...prev, newImage]);
+      // Replace the image for this scene
+      setGeneratedImages(prev => 
+        prev.map(img => img.sceneNumber === sceneNumber ? newImage : img)
+      );
+      
+      // Auto-select the new image
+      setSelectedImages(prev => ({
+        ...prev,
+        [sceneNumber]: data.imageUrl
+      }));
       
       toast({
-        title: "Image générée !",
-        description: "Vous pouvez la sélectionner ou en générer une autre"
+        title: "Image régénérée !",
+        description: `Nouvelle image pour la scène ${sceneNumber}`
       });
     } catch (error: any) {
-      console.error('Erreur génération image:', error);
+      console.error('Erreur régénération image:', error);
       toast({
         title: "Erreur",
-        description: error.message || "Impossible de générer l'image",
+        description: error.message || "Impossible de régénérer l'image",
         variant: "destructive"
       });
     } finally {
@@ -208,32 +283,51 @@ const CreateVideo = () => {
     }
   };
 
-  const selectImage = (imageUrl: string) => {
-    if (!scriptData) return;
-    
-    const currentScene = scriptData.scenes[currentSceneIndex];
-    setSelectedImages(prev => ({
-      ...prev,
-      [currentScene.scene_number]: imageUrl
-    }));
-
-    toast({
-      title: "Image sélectionnée !",
-      description: `Image choisie pour la scène ${currentScene.scene_number}`
-    });
-  };
-
-  const nextScene = () => {
-    if (scriptData && currentSceneIndex < scriptData.scenes.length - 1) {
-      setCurrentSceneIndex(currentSceneIndex + 1);
-      setGeneratedImages([]);
+  const downloadAllImages = async () => {
+    if (generatedImages.length === 0) {
+      toast({
+        title: "Aucune image",
+        description: "Générez d'abord les images avant de télécharger",
+        variant: "destructive"
+      });
+      return;
     }
-  };
 
-  const previousScene = () => {
-    if (currentSceneIndex > 0) {
-      setCurrentSceneIndex(currentSceneIndex - 1);
-      setGeneratedImages([]);
+    try {
+      const JSZip = (await import('jszip')).default;
+      const zip = new JSZip();
+
+      // Convert base64 images to blob and add to zip
+      for (const image of generatedImages) {
+        const base64Data = image.imageUrl.split(',')[1];
+        const blob = await fetch(image.imageUrl).then(r => r.blob());
+        zip.file(`scene_${image.sceneNumber}.png`, blob);
+      }
+
+      // Generate zip file
+      const content = await zip.generateAsync({ type: 'blob' });
+      
+      // Create download link
+      const url = URL.createObjectURL(content);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${projectName || 'video'}_images.zip`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      toast({
+        title: "Téléchargement lancé !",
+        description: "Toutes les images sont en cours de téléchargement"
+      });
+    } catch (error) {
+      console.error('Erreur téléchargement:', error);
+      toast({
+        title: "Erreur",
+        description: "Impossible de télécharger les images",
+        variant: "destructive"
+      });
     }
   };
 
@@ -460,127 +554,118 @@ const CreateVideo = () => {
 
           {/* Step 3: Image Generation */}
           {currentStep === 'images' && scriptData && (
-            <div className="grid lg:grid-cols-2 gap-6">
-              {/* Scene Info */}
-              <Card className="p-6 border-border/40 bg-gradient-to-br from-card/60 to-card/40 backdrop-blur-sm">
-                <div className="space-y-4">
-                  <div>
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-2xl font-bold">
-                        Scène {scriptData.scenes[currentSceneIndex].scene_number} / {scriptData.scenes.length}
-                      </h3>
-                      <span className="px-3 py-1 rounded-full text-sm font-semibold bg-primary/20">
-                        {scriptData.scenes[currentSceneIndex].title}
-                      </span>
-                    </div>
-                    
-                    <div className="space-y-3">
-                      <div>
-                        <span className="font-semibold text-primary text-sm">VISUEL:</span>
-                        <p className="text-muted-foreground mt-1">
-                          {scriptData.scenes[currentSceneIndex].visual}
-                        </p>
-                      </div>
-                      <div>
-                        <span className="font-semibold text-accent text-sm">NARRATION:</span>
-                        <p className="mt-1">{scriptData.scenes[currentSceneIndex].narration}</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <Button
-                    className="w-full bg-gradient-to-r from-primary to-accent hover:opacity-90"
-                    onClick={generateImageForScene}
+            <div className="space-y-6">
+              {generatedImages.length === 0 ? (
+                <Card className="p-8 border-border/40 bg-gradient-to-br from-card/60 to-card/40 backdrop-blur-sm text-center">
+                  <Wand2 className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                  <h3 className="text-xl font-semibold mb-2">Générer toutes les images</h3>
+                  <p className="text-muted-foreground mb-6">
+                    Générez toutes les images d'un coup pour visualiser l'ensemble du projet
+                  </p>
+                  <Button 
+                    onClick={generateAllImages}
                     disabled={isGeneratingImage}
+                    size="lg"
+                    className="bg-gradient-to-r from-primary to-accent hover:opacity-90"
                   >
                     {isGeneratingImage ? (
                       <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Génération en cours...
+                        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                        Génération de {scriptData.scenes.length} images...
                       </>
                     ) : (
                       <>
-                        <Sparkles className="h-4 w-4 mr-2" />
-                        Générer une image
+                        <Wand2 className="mr-2 h-5 w-5" />
+                        Générer toutes les images ({scriptData.scenes.length})
                       </>
                     )}
                   </Button>
-
-                  {/* Navigation */}
-                  <div className="flex gap-2 pt-4">
-                    <Button
-                      variant="outline"
-                      onClick={previousScene}
-                      disabled={currentSceneIndex === 0}
-                      className="flex-1"
-                    >
-                      <ChevronLeft className="h-4 w-4 mr-2" />
-                      Scène précédente
-                    </Button>
-                    {currentSceneIndex === scriptData.scenes.length - 1 ? (
+                </Card>
+              ) : (
+                <>
+                  <Card className="p-6 border-border/40 bg-gradient-to-br from-card/60 to-card/40 backdrop-blur-sm">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-xl font-semibold">
+                        Images générées ({generatedImages.length}/{scriptData.scenes.length})
+                      </h3>
                       <Button
-                        className="flex-1 bg-gradient-to-r from-primary to-accent hover:opacity-90"
+                        onClick={downloadAllImages}
+                        variant="outline"
+                        disabled={isGeneratingImage}
+                      >
+                        <Download className="mr-2 h-4 w-4" />
+                        Télécharger tout (ZIP)
+                      </Button>
+                    </div>
+                  </Card>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {scriptData.scenes.map((scene) => {
+                      const generatedImage = generatedImages.find(img => img.sceneNumber === scene.scene_number);
+                      
+                      return (
+                        <Card key={scene.scene_number} className="p-4 border-border/40 bg-gradient-to-br from-card/60 to-card/40 backdrop-blur-sm space-y-3">
+                          <div className="flex items-start justify-between">
+                            <div>
+                              <h4 className="font-semibold">Scène {scene.scene_number}</h4>
+                              <p className="text-xs text-muted-foreground">{scene.title}</p>
+                            </div>
+                            {generatedImage && (
+                              <Button
+                                onClick={() => regenerateImage(scene.scene_number)}
+                                disabled={isGeneratingImage}
+                                size="sm"
+                                variant="outline"
+                              >
+                                <RefreshCw className="h-3 w-3 mr-1" />
+                                Refaire
+                              </Button>
+                            )}
+                          </div>
+
+                          {generatedImage ? (
+                            <div className="relative group">
+                              <img 
+                                src={generatedImage.imageUrl} 
+                                alt={`Scène ${scene.scene_number}`}
+                                className="w-full aspect-video object-cover rounded-lg border-2 border-border/40"
+                              />
+                              <div className="absolute top-2 right-2 bg-primary text-primary-foreground px-2 py-1 rounded-md text-xs font-medium">
+                                ✓ Générée
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="w-full aspect-video bg-background/30 rounded-lg border-2 border-dashed border-border/40 flex items-center justify-center">
+                              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                            </div>
+                          )}
+
+                          <div className="space-y-1">
+                            <p className="text-xs text-muted-foreground">Visual:</p>
+                            <p className="text-xs line-clamp-2">{scene.visual}</p>
+                          </div>
+                        </Card>
+                      );
+                    })}
+                  </div>
+
+                  <Card className="p-6 border-border/40 bg-gradient-to-br from-card/60 to-card/40 backdrop-blur-sm">
+                    <div className="flex gap-4">
+                      <Button variant="outline" onClick={() => setCurrentStep('script')} className="flex-1">
+                        Retour au script
+                      </Button>
+                      <Button 
                         onClick={finishProject}
-                        disabled={Object.keys(selectedImages).length !== scriptData.scenes.length}
+                        disabled={generatedImages.length !== scriptData.scenes.length || isGeneratingImage}
+                        className="flex-1 bg-gradient-to-r from-primary to-accent hover:opacity-90"
                       >
                         <Check className="h-4 w-4 mr-2" />
-                        Terminer
+                        Terminer le projet
                       </Button>
-                    ) : (
-                      <Button
-                        variant="outline"
-                        onClick={nextScene}
-                        disabled={!selectedImages[scriptData.scenes[currentSceneIndex].scene_number]}
-                        className="flex-1"
-                      >
-                        Scène suivante
-                        <ChevronRight className="h-4 w-4 ml-2" />
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              </Card>
-
-              {/* Generated Images */}
-              <Card className="p-6 border-border/40 bg-gradient-to-br from-card/60 to-card/40 backdrop-blur-sm">
-                <h3 className="text-xl font-bold mb-4">Images générées</h3>
-                
-                {generatedImages.length === 0 ? (
-                  <div className="flex items-center justify-center h-64 border-2 border-dashed border-border/40 rounded-lg">
-                    <div className="text-center space-y-2">
-                      <Image className="h-12 w-12 mx-auto text-muted-foreground" />
-                      <p className="text-muted-foreground">
-                        Cliquez sur "Générer une image" pour commencer
-                      </p>
                     </div>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {generatedImages.map((img, idx) => (
-                      <div key={idx} className="relative">
-                        <img
-                          src={img.imageUrl}
-                          alt={`Génération ${idx + 1}`}
-                          className="w-full rounded-lg border-2 border-border/40"
-                        />
-                        <Button
-                          className="absolute bottom-4 right-4 bg-gradient-to-r from-primary to-accent hover:opacity-90"
-                          onClick={() => selectImage(img.imageUrl)}
-                        >
-                          {selectedImages[scriptData.scenes[currentSceneIndex].scene_number] === img.imageUrl ? (
-                            <>
-                              <Check className="h-4 w-4 mr-2" />
-                              Sélectionnée
-                            </>
-                          ) : (
-                            'Sélectionner'
-                          )}
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </Card>
+                  </Card>
+                </>
+              )}
             </div>
           )}
         </div>
