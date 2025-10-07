@@ -172,7 +172,7 @@ const CreateVideo = () => {
     try {
       // Generate images sequentially to avoid rate limits
       for (const scene of scriptData.scenes) {
-        const prompt = `Create a 16:9 image for: ${scene.visual}. Style: ${stylePrompt}`;
+        const prompt = `Create a 9:16 vertical portrait image for: ${scene.visual}. Style: ${stylePrompt}`;
         
         try {
           const { data, error } = await supabase.functions.invoke('generate-image', {
@@ -250,7 +250,7 @@ const CreateVideo = () => {
         ? `Dark cinematic atmosphere with desaturated teal-green tones, dramatic artificial lighting (yellow/red accents), strong contrasts, human silhouettes in backlight, imposing industrial or military architecture, atmospheric fog/mist, dystopian mysterious ambiance inspired by noir cinema and Simon Stålenhag style.`
         : `Cinematic, dramatic lighting, high quality, professional video production.`;
       
-      const prompt = `Create a 16:9 image for: ${scene.visual}. Style: ${stylePrompt}`;
+      const prompt = `Create a 9:16 vertical portrait image for: ${scene.visual}. Style: ${stylePrompt}`;
 
       const { data, error } = await supabase.functions.invoke('generate-image', {
         body: { 
