@@ -35,25 +35,34 @@ serve(async (req) => {
       systemPrompt = `Tu es un scénariste expert spécialisé dans les histoires intrigantes et captivantes pour vidéos courtes. 
 Tu dois créer des scripts engageants qui captivent l'audience dès les premières secondes.
 Le script doit être structuré en scènes claires, avec une narration fluide et un rythme dynamique.
-Durée visée: 60-90 secondes de vidéo.`;
+Durée visée: 60-90 secondes de vidéo.
+
+Tu DOIS répondre UNIQUEMENT avec un objet JSON valide dans ce format exact:
+{
+  "title": "Titre accrocheur de la vidéo",
+  "music": "Description de la musique d'ambiance",
+  "scenes": [
+    {
+      "scene_number": 1,
+      "title": "HOOK",
+      "visual": "Description détaillée du visuel",
+      "narration": "Texte de la narration"
+    }
+  ]
+}`;
 
       userPrompt = `Crée un script captivant pour une vidéo sur le sujet suivant: "${topic}"
 
 Le script doit inclure:
-1. Un hook accrocheur (5-10 secondes)
-2. Le développement de l'histoire avec des rebondissements
-3. Une conclusion marquante
+1. Un titre accrocheur
+2. Une description de musique d'ambiance appropriée
+3. 4-6 scènes avec pour chacune:
+   - Un numéro de scène
+   - Un titre (ex: "HOOK", "DÉVELOPPEMENT", "REBONDISSEMENT", etc.)
+   - Une description visuelle détaillée
+   - Le texte de narration
 
-Format souhaité:
-[SCÈNE 1 - HOOK]
-Texte de narration...
-
-[SCÈNE 2]
-Texte de narration...
-
-etc.
-
-Sois créatif et intrigant !`;
+IMPORTANT: Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
     } else if (type === 'prompts') {
       systemPrompt = `Tu es un expert en génération de prompts pour Midjourney. 
 Tu dois analyser un script vidéo et créer des prompts détaillés pour générer des images qui illustrent parfaitement chaque moment clé.
@@ -124,6 +133,24 @@ Critères pour les prompts:
     const content = data.choices[0].message.content;
     
     console.log(`${type} généré avec succès`);
+
+    // Pour les scripts, parser le JSON
+    if (type === 'script') {
+      try {
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const parsedScript = JSON.parse(jsonMatch[0]);
+          return new Response(
+            JSON.stringify({ script: parsedScript }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        throw new Error('Format JSON invalide dans la réponse');
+      } catch (e) {
+        console.error('Erreur parsing JSON script:', e);
+        throw new Error('Impossible de parser le script généré');
+      }
+    }
 
     if (type === 'prompts') {
       // Parse le JSON des prompts
