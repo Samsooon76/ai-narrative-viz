@@ -167,8 +167,11 @@ const CreateVideo = () => {
       ? `Dark cinematic atmosphere with desaturated teal-green tones, dramatic artificial lighting (yellow/red accents), strong contrasts, human silhouettes in backlight, imposing industrial or military architecture, atmospheric fog/mist, dystopian mysterious ambiance inspired by noir cinema and Simon Stålenhag style.`
       : `Cinematic, dramatic lighting, high quality, professional video production.`;
 
+    const newImages: GeneratedImage[] = [];
+    
     try {
-      const imagePromises = scriptData.scenes.map(async (scene) => {
+      // Generate images sequentially to avoid rate limits
+      for (const scene of scriptData.scenes) {
         const prompt = `Create a 16:9 image for: ${scene.visual}. Style: ${stylePrompt}`;
         
         try {
@@ -184,32 +187,43 @@ const CreateVideo = () => {
             throw new Error('Aucune image générée');
           }
 
-          return {
+          const newImage: GeneratedImage = {
             sceneNumber: scene.scene_number,
             imageUrl: data.imageUrl,
             prompt
           };
-        } catch (error) {
-          console.error(`Erreur scène ${scene.scene_number}:`, error);
-          return null;
-        }
-      });
+          
+          newImages.push(newImage);
+          
+          // Update UI progressively as each image is generated
+          setGeneratedImages([...newImages]);
+          setSelectedImages(prev => ({
+            ...prev,
+            [scene.scene_number]: data.imageUrl
+          }));
 
-      const results = await Promise.all(imagePromises);
-      const validImages = results.filter((img): img is GeneratedImage => img !== null);
-      
-      setGeneratedImages(validImages);
-      
-      // Auto-select all generated images
-      const autoSelected: Record<number, string> = {};
-      validImages.forEach(img => {
-        autoSelected[img.sceneNumber] = img.imageUrl;
-      });
-      setSelectedImages(autoSelected);
+          toast({
+            title: `Image ${newImages.length}/${scriptData.scenes.length} générée`,
+            description: `Scène ${scene.scene_number}: ${scene.title}`
+          });
+
+          // Wait 2 seconds between each generation to avoid rate limits
+          if (scene.scene_number < scriptData.scenes.length) {
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
+        } catch (error: any) {
+          console.error(`Erreur scène ${scene.scene_number}:`, error);
+          toast({
+            title: `Erreur scène ${scene.scene_number}`,
+            description: error.message || "Impossible de générer cette image",
+            variant: "destructive"
+          });
+        }
+      }
 
       toast({
-        title: "Images générées !",
-        description: `${validImages.length}/${scriptData.scenes.length} images créées avec succès`
+        title: "Génération terminée !",
+        description: `${newImages.length}/${scriptData.scenes.length} images créées avec succès`
       });
     } catch (error: any) {
       console.error('Erreur génération images:', error);
