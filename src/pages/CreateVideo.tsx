@@ -667,24 +667,33 @@ const CreateVideo = () => {
                   <p className="text-muted-foreground mb-6">
                     Générez toutes les images d'un coup pour visualiser l'ensemble du projet
                   </p>
-                  <Button 
-                    onClick={generateAllImages}
-                    disabled={isGeneratingImage}
-                    size="lg"
-                    className="bg-gradient-to-r from-primary to-accent hover:opacity-90"
-                  >
-                    {isGeneratingImage ? (
-                      <>
-                        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                        Génération de {scriptData.scenes.length} images...
-                      </>
-                    ) : (
-                      <>
-                        <Wand2 className="mr-2 h-5 w-5" />
-                        Générer toutes les images ({scriptData.scenes.length})
-                      </>
-                    )}
-                  </Button>
+                  <div className="flex gap-4 justify-center">
+                    <Button 
+                      variant="outline"
+                      onClick={() => setCurrentStep('script')}
+                      size="lg"
+                    >
+                      Retour au script
+                    </Button>
+                    <Button 
+                      onClick={generateAllImages}
+                      disabled={isGeneratingImage}
+                      size="lg"
+                      className="bg-gradient-to-r from-primary to-accent hover:opacity-90"
+                    >
+                      {isGeneratingImage ? (
+                        <>
+                          <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                          Génération de {scriptData.scenes.length} images...
+                        </>
+                      ) : (
+                        <>
+                          <Wand2 className="mr-2 h-5 w-5" />
+                          Générer toutes les images ({scriptData.scenes.length})
+                        </>
+                      )}
+                    </Button>
+                  </div>
                 </Card>
               ) : (
                 <>
