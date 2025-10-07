@@ -65,13 +65,24 @@ serve(async (req) => {
 
     const data = await response.json();
     
+    console.log('Réponse API complète:', JSON.stringify(data));
+    
     // Extraire l'image base64 de la réponse
-    const images = data.choices[0]?.message?.images;
+    const images = data.choices?.[0]?.message?.images;
+    
     if (!images || images.length === 0) {
-      throw new Error('Aucune image générée');
+      console.error('Structure de la réponse:', JSON.stringify(data, null, 2));
+      throw new Error('Aucune image générée dans la réponse API');
     }
 
-    const imageUrl = images[0].image_url.url;
+    // Vérifier la structure de l'image
+    const imageData = images[0];
+    if (!imageData?.image_url?.url) {
+      console.error('Structure image invalide:', JSON.stringify(imageData, null, 2));
+      throw new Error('Structure de l\'image invalide');
+    }
+
+    const imageUrl = imageData.image_url.url;
     
     console.log('Image générée avec succès');
 
