@@ -40,6 +40,7 @@ const CreateVideo = () => {
   // Step 1: Topic
   const [projectName, setProjectName] = useState("");
   const [topic, setTopic] = useState("");
+  const [cinematicStyle, setCinematicStyle] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   
   // Step 2: Script
@@ -82,7 +83,7 @@ const CreateVideo = () => {
     setIsGenerating(true);
     try {
       const { data, error } = await supabase.functions.invoke('generate-script', {
-        body: { topic, type: 'script' }
+        body: { topic, type: 'script', cinematicStyle }
       });
 
       console.log('Response data:', data);
@@ -165,8 +166,11 @@ const CreateVideo = () => {
     setIsGeneratingImage(true);
 
     try {
-      const prompt = `Create a cinematic 16:9 image for a video scene: ${currentScene.visual}. 
-Style: cinematic, dramatic lighting, high quality, professional video production.`;
+      const stylePrompt = cinematicStyle 
+        ? `Dark cinematic atmosphere with desaturated teal-green tones, dramatic artificial lighting (yellow/red accents), strong contrasts, human silhouettes in backlight, imposing industrial or military architecture, atmospheric fog/mist, dystopian mysterious ambiance inspired by noir cinema and Simon Stålenhag style.`
+        : `Cinematic, dramatic lighting, high quality, professional video production.`;
+      
+      const prompt = `Create a 16:9 image for: ${currentScene.visual}. Style: ${stylePrompt}`;
 
       const { data, error } = await supabase.functions.invoke('generate-image', {
         body: { 
@@ -369,6 +373,19 @@ Style: cinematic, dramatic lighting, high quality, professional video production
                     rows={6}
                     className="bg-background/50 resize-none"
                   />
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    id="cinematic-style"
+                    checked={cinematicStyle}
+                    onChange={(e) => setCinematicStyle(e.target.checked)}
+                    className="w-4 h-4 rounded border-border bg-background/50"
+                  />
+                  <Label htmlFor="cinematic-style" className="cursor-pointer">
+                    Utiliser le style cinématique sombre (dystopique, contrastes forts, atmosphère mystérieuse)
+                  </Label>
                 </div>
 
                 <Button 

@@ -12,7 +12,7 @@ serve(async (req) => {
 
   try {
     const body = await req.json();
-    const { topic, type, script } = body;
+    const { topic, type, script, cinematicStyle } = body;
     
     if (!topic) {
       return new Response(
@@ -32,10 +32,23 @@ serve(async (req) => {
     let userPrompt = '';
 
     if (type === 'script') {
+      const styleInstructions = cinematicStyle 
+        ? `\n\nSTYLE VISUEL IMPOSÉ pour toutes les descriptions visuelles:
+- Atmosphère cinématique sombre et dramatique
+- Palette de couleurs: tons verts-bleus désaturés avec éclairages artificiels jaunes/rouges
+- Contrastes forts entre ombres profondes et sources lumineuses
+- Silhouettes humaines en contre-jour
+- Architecture industrielle ou militaire imposante
+- Brume/fog atmosphérique dense
+- Ambiance dystopique et mystérieuse inspirée du cinéma noir et du style Simon Stålenhag
+- Éclairages ponctuels créant des halos dans la brume
+- Composition dramatique avec perspectives imposantes`
+        : '';
+
       systemPrompt = `Tu es un scénariste expert spécialisé dans les histoires intrigantes et captivantes pour vidéos courtes. 
 Tu dois créer des scripts engageants qui captivent l'audience dès les premières secondes.
 Le script doit être structuré en scènes claires, avec une narration fluide et un rythme dynamique.
-Durée visée: 60-90 secondes de vidéo.
+Durée visée: 60 secondes de vidéo.${styleInstructions}
 
 Tu DOIS répondre UNIQUEMENT avec un objet JSON valide dans ce format exact:
 {
@@ -56,11 +69,13 @@ Tu DOIS répondre UNIQUEMENT avec un objet JSON valide dans ce format exact:
 Le script doit inclure:
 1. Un titre accrocheur
 2. Une description de musique d'ambiance appropriée
-3. 4-6 scènes avec pour chacune:
+3. 10-12 scènes dynamiques (pour une vidéo vivante d'une minute) avec pour chacune:
    - Un numéro de scène
-   - Un titre (ex: "HOOK", "DÉVELOPPEMENT", "REBONDISSEMENT", etc.)
-   - Une description visuelle détaillée
-   - Le texte de narration
+   - Un titre court et percutant
+   - Une description visuelle TRÈS détaillée (intégrant le style imposé si spécifié)
+   - Le texte de narration (2-3 phrases courtes maximum par scène)
+
+Chaque scène doit durer environ 5-6 secondes.
 
 IMPORTANT: Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
     } else if (type === 'prompts') {
