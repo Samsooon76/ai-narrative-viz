@@ -12,7 +12,7 @@ serve(async (req) => {
 
   try {
     const body = await req.json();
-    const { topic, type, script, cinematicStyle } = body;
+    const { topic, type, script, visualStyle } = body;
     
     if (!topic) {
       return new Response(
@@ -32,17 +32,50 @@ serve(async (req) => {
     let userPrompt = '';
 
     if (type === 'script') {
-      const styleInstructions = cinematicStyle 
-        ? `\n\nSTYLE VISUEL IMPOSÉ pour toutes les descriptions visuelles:
-- Atmosphère cinématique sombre et dramatique
-- Palette de couleurs: tons verts-bleus désaturés avec éclairages artificiels jaunes/rouges
-- Contrastes forts entre ombres profondes et sources lumineuses
-- Silhouettes humaines en contre-jour
-- Architecture industrielle ou militaire imposante
-- Brume/fog atmosphérique dense
-- Ambiance dystopique et mystérieuse inspirée du cinéma noir et du style Simon Stålenhag
-- Éclairages ponctuels créant des halos dans la brume
-- Composition dramatique avec perspectives imposantes`
+      const styleMap: Record<string, string> = {
+        'desaturated-toon': `\n\nSTYLE VISUEL IMPOSÉ: Desaturated Atmospheric Toon Style (Niji 6)
+- Ambiance sérieuse, style toon 2D désaturé mais cinématique
+- Ombres longues et subtiles, brume légère
+- Rythme poétique et calme
+- Exemple: un guerrier silencieux marchant sur un chemin de montagne vide
+- Style: desaturated 2D toon style, long shadows, subtle mist, poetic pacing --niji 6 --ar 16:9`,
+        
+        'digital-noir': `\n\nSTYLE VISUEL IMPOSÉ: Digital Noir Angular Realism (v7)
+- Style cartoon néo-minimaliste avec angles marqués
+- Ombrage plat, ombres aux contours durs, traits faciaux géométriques
+- Éclairage cinématique sombre, palette monochrome verte
+- Contours épais, frame d'animation 2D
+- Style: sharp-angled neo-minimalist cartoon style, flat shading, hard-edged shadows, geometric features, dark cinematic lighting --v 7`,
+        
+        'bold-graphic': `\n\nSTYLE VISUEL IMPOSÉ: Bold Graphic Minimalism (v7)
+- Minimalisme graphique audacieux
+- Silhouettes fortes, tons plats, tension dramatique
+- Ombres aux bords nets, palette rouge-noir
+- Atmosphère stylisée de bande dessinée
+- Style: bold graphic minimalism, sharp-edged shadows, red-black color scheme, stylized comic atmosphere --v 7 --style raw --ar 16:9`,
+        
+        'muted-adventure': `\n\nSTYLE VISUEL IMPOSÉ: Muted Desaturated Adventure Style (v7)
+- Style animation désaturé et doux
+- Cadrage large, calme, storytelling par silhouettes
+- Palette limitée, ambiance poétique
+- Composition paysage large
+- Style: muted desaturated animation style, limited palette, poetic vibe, wide landscape composition --v 7 --ar 16:9`,
+        
+        'whimsical-cartoon': `\n\nSTYLE VISUEL IMPOSÉ: Cracked-Egg Whimsical Cartoon Style (Niji 6)
+- Proportions bizarres, énergie rebondissante
+- Formes étranges, chaos joyeux et fun
+- Univers décalé et ludique
+- Style: cracked-egg whimsical cartoon style, weird shapes, joyful chaos --niji 6 --ar 16:9`,
+        
+        'late-night-action': `\n\nSTYLE VISUEL IMPOSÉ: Late-Night Toonline Action Style (v7)
+- Ton sérieux, animation précise
+- Ambiance lourde et nocturne
+- Silhouettes en contre-jour, énergie de dialogue minimal
+- Style: late-night toonline action style, backlight silhouette, minimal dialogue energy --v 7 --ar 16:9`
+      };
+
+      const styleInstructions = visualStyle && visualStyle !== 'none' 
+        ? styleMap[visualStyle] || ''
         : '';
 
       systemPrompt = `Tu es un scénariste expert spécialisé dans les histoires intrigantes et captivantes pour vidéos courtes. 

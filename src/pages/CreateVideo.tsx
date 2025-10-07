@@ -42,7 +42,7 @@ const CreateVideo = () => {
   // Step 1: Topic
   const [projectName, setProjectName] = useState("");
   const [topic, setTopic] = useState("");
-  const [cinematicStyle, setCinematicStyle] = useState(false);
+  const [visualStyle, setVisualStyle] = useState<string>("none");
   const [isGenerating, setIsGenerating] = useState(false);
   
   // Step 2: Script
@@ -168,7 +168,7 @@ const CreateVideo = () => {
     setIsGenerating(true);
     try {
       const { data, error } = await supabase.functions.invoke('generate-script', {
-        body: { topic, type: 'script', cinematicStyle }
+        body: { topic, type: 'script', visualStyle }
       });
 
       console.log('Response data:', data);
@@ -263,9 +263,19 @@ const CreateVideo = () => {
     if (!scriptData) return;
     
     setIsGeneratingImage(true);
-    const stylePrompt = cinematicStyle 
-      ? `Dark cinematic atmosphere with desaturated teal-green tones, dramatic artificial lighting (yellow/red accents), strong contrasts, human silhouettes in backlight, imposing industrial or military architecture, atmospheric fog/mist, dystopian mysterious ambiance inspired by noir cinema and Simon Stålenhag style.`
-      : `Cinematic, dramatic lighting, high quality, professional video production.`;
+    
+    const styleMap: Record<string, string> = {
+      'desaturated-toon': 'desaturated 2D toon style, long shadows, subtle mist, poetic pacing --niji 6 --ar 16:9',
+      'digital-noir': 'sharp-angled neo-minimalist cartoon style, flat shading, hard-edged shadows, geometric features, dark cinematic lighting, monochrome green palette --v 7',
+      'bold-graphic': 'bold graphic minimalism, sharp-edged shadows, red-black color scheme, stylized comic atmosphere --v 7 --style raw --ar 16:9',
+      'muted-adventure': 'muted desaturated animation style, limited palette, poetic vibe, wide landscape composition --v 7 --ar 16:9',
+      'whimsical-cartoon': 'cracked-egg whimsical cartoon style, weird shapes, joyful chaos --niji 6 --ar 16:9',
+      'late-night-action': 'late-night toonline action style, backlight silhouette, minimal dialogue energy --v 7 --ar 16:9'
+    };
+
+    const stylePrompt = visualStyle && visualStyle !== 'none'
+      ? styleMap[visualStyle] || 'Cinematic, dramatic lighting, high quality, professional video production.'
+      : 'Cinematic, dramatic lighting, high quality, professional video production.';
 
     const newImages: GeneratedImage[] = [];
     
@@ -346,9 +356,18 @@ const CreateVideo = () => {
     setIsGeneratingImage(true);
 
     try {
-      const stylePrompt = cinematicStyle 
-        ? `Dark cinematic atmosphere with desaturated teal-green tones, dramatic artificial lighting (yellow/red accents), strong contrasts, human silhouettes in backlight, imposing industrial or military architecture, atmospheric fog/mist, dystopian mysterious ambiance inspired by noir cinema and Simon Stålenhag style.`
-        : `Cinematic, dramatic lighting, high quality, professional video production.`;
+      const styleMap: Record<string, string> = {
+        'desaturated-toon': 'desaturated 2D toon style, long shadows, subtle mist, poetic pacing --niji 6 --ar 16:9',
+        'digital-noir': 'sharp-angled neo-minimalist cartoon style, flat shading, hard-edged shadows, geometric features, dark cinematic lighting, monochrome green palette --v 7',
+        'bold-graphic': 'bold graphic minimalism, sharp-edged shadows, red-black color scheme, stylized comic atmosphere --v 7 --style raw --ar 16:9',
+        'muted-adventure': 'muted desaturated animation style, limited palette, poetic vibe, wide landscape composition --v 7 --ar 16:9',
+        'whimsical-cartoon': 'cracked-egg whimsical cartoon style, weird shapes, joyful chaos --niji 6 --ar 16:9',
+        'late-night-action': 'late-night toonline action style, backlight silhouette, minimal dialogue energy --v 7 --ar 16:9'
+      };
+
+      const stylePrompt = visualStyle && visualStyle !== 'none'
+        ? styleMap[visualStyle] || 'Cinematic, dramatic lighting, high quality, professional video production.'
+        : 'Cinematic, dramatic lighting, high quality, professional video production.';
       
       const prompt = `Create a 9:16 vertical portrait image for: ${scene.visual}. Style: ${stylePrompt}`;
 
@@ -583,17 +602,22 @@ const CreateVideo = () => {
                   />
                 </div>
 
-                <div className="flex items-center space-x-2">
-                  <input
-                    type="checkbox"
-                    id="cinematic-style"
-                    checked={cinematicStyle}
-                    onChange={(e) => setCinematicStyle(e.target.checked)}
-                    className="w-4 h-4 rounded border-border bg-background/50"
-                  />
-                  <Label htmlFor="cinematic-style" className="cursor-pointer">
-                    Utiliser le style cinématique sombre (dystopique, contrastes forts, atmosphère mystérieuse)
-                  </Label>
+                <div className="space-y-2">
+                  <Label htmlFor="visual-style">Style visuel</Label>
+                  <select
+                    id="visual-style"
+                    value={visualStyle}
+                    onChange={(e) => setVisualStyle(e.target.value)}
+                    className="w-full px-3 py-2 border border-border bg-background/50 rounded-md text-foreground"
+                  >
+                    <option value="none">Aucun style spécifique</option>
+                    <option value="desaturated-toon">🎨 Desaturated Atmospheric Toon (Niji 6) - Ambiance sérieuse, plat mais cinématique</option>
+                    <option value="digital-noir">🌃 Digital Noir Angular Realism (v7) - Néo-minimaliste, éclairage dramatique</option>
+                    <option value="bold-graphic">⚡ Bold Graphic Minimalism (v7) - Silhouettes fortes, tons plats, tension</option>
+                    <option value="muted-adventure">🏔️ Muted Desaturated Adventure (v7) - Calme, cadrage large, storytelling par silhouettes</option>
+                    <option value="whimsical-cartoon">🎪 Cracked-Egg Whimsical Cartoon (Niji 6) - Proportions bizarres, énergie joyeuse</option>
+                    <option value="late-night-action">🌙 Late-Night Toonline Action (v7) - Ton sérieux, animation précise, ambiance lourde</option>
+                  </select>
                 </div>
 
                 <Button 
