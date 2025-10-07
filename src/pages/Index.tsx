@@ -3,8 +3,10 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Sparkles, Wand2, Film, Zap } from "lucide-react";
 import { Link } from "react-router-dom";
+import { useAuth } from "@/lib/auth";
 
 const Index = () => {
+  const { user } = useAuth();
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
@@ -33,19 +35,32 @@ const Index = () => {
             </p>
             
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center pt-4">
-              <Link to="/auth">
-                <Button 
-                  size="lg" 
-                  className="bg-gradient-to-r from-primary to-accent hover:opacity-90 text-lg px-8 h-14"
-                >
-                  Commencer gratuitement
-                </Button>
-              </Link>
-              <Link to="/auth">
-                <Button size="lg" variant="outline" className="text-lg px-8 h-14">
-                  Se connecter
-                </Button>
-              </Link>
+              {user ? (
+                <Link to="/create">
+                  <Button 
+                    size="lg" 
+                    className="bg-gradient-to-r from-primary to-accent hover:opacity-90 text-lg px-8 h-14"
+                  >
+                    Créer une vidéo
+                  </Button>
+                </Link>
+              ) : (
+                <>
+                  <Link to="/auth">
+                    <Button 
+                      size="lg" 
+                      className="bg-gradient-to-r from-primary to-accent hover:opacity-90 text-lg px-8 h-14"
+                    >
+                      Commencer gratuitement
+                    </Button>
+                  </Link>
+                  <Link to="/auth">
+                    <Button size="lg" variant="outline" className="text-lg px-8 h-14">
+                      Se connecter
+                    </Button>
+                  </Link>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -113,12 +128,12 @@ const Index = () => {
               <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
                 Rejoignez des milliers de créateurs qui utilisent déjà VideoAI pour produire du contenu exceptionnel.
               </p>
-              <Link to="/auth">
+              <Link to={user ? "/create" : "/auth"}>
                 <Button 
                   size="lg" 
                   className="bg-gradient-to-r from-primary to-accent hover:opacity-90 text-lg px-8 h-14"
                 >
-                  Commencer maintenant
+                  {user ? "Créer une vidéo" : "Commencer maintenant"}
                 </Button>
               </Link>
             </div>
