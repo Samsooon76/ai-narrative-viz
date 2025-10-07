@@ -63,13 +63,28 @@ const CreateVideo = () => {
       return;
     }
 
+    console.log('Début génération script...');
+    console.log('Topic:', topic);
+    console.log('Project name:', projectName);
+
     setIsGenerating(true);
     try {
+      console.log('Appel de l\'edge function generate-script...');
+      
       const { data, error } = await supabase.functions.invoke('generate-script', {
         body: { topic, type: 'script' }
       });
 
-      if (error) throw error;
+      console.log('Réponse reçue:', { data, error });
+
+      if (error) {
+        console.error('Erreur de la fonction:', error);
+        throw error;
+      }
+
+      if (!data || !data.content) {
+        throw new Error('Aucun contenu reçu de l\'IA');
+      }
 
       setGeneratedScript(data.content);
       setEditedScript(data.content);
@@ -80,7 +95,7 @@ const CreateVideo = () => {
         description: "Vous pouvez maintenant le réviser avant de continuer"
       });
     } catch (error: any) {
-      console.error('Erreur génération script:', error);
+      console.error('Erreur complète génération script:', error);
       toast({
         title: "Erreur",
         description: error.message || "Impossible de générer le script",
@@ -88,6 +103,7 @@ const CreateVideo = () => {
       });
     } finally {
       setIsGenerating(false);
+      console.log('Fin de la génération');
     }
   };
 
