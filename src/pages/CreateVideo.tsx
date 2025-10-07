@@ -6,10 +6,28 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Wand2, Sparkles, Volume2, Image } from "lucide-react";
 import { useState } from "react";
+import { useAuth } from "@/lib/auth";
+import { Navigate } from "react-router-dom";
 
 const CreateVideo = () => {
+  const { user, loading } = useAuth();
   const [projectName, setProjectName] = useState("");
   const [prompt, setPrompt] = useState("");
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-muted-foreground">Chargement...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Navigate to="/auth" replace />;
+  }
 
   return (
     <div className="min-h-screen bg-background">

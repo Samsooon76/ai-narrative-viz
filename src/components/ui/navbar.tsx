@@ -1,8 +1,11 @@
 import { Button } from "@/components/ui/button";
-import { Video } from "lucide-react";
+import { Video, LogOut } from "lucide-react";
 import { Link } from "react-router-dom";
+import { useAuth } from "@/lib/auth";
 
 export const Navbar = () => {
+  const { user, signOut } = useAuth();
+
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 border-b border-border/40 bg-background/80 backdrop-blur-xl">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
@@ -17,20 +20,32 @@ export const Navbar = () => {
           </Link>
 
           <div className="flex items-center gap-4">
-            <Link to="/dashboard">
-              <Button variant="ghost">Dashboard</Button>
-            </Link>
-            <Link to="/pricing">
-              <Button variant="ghost">Pricing</Button>
-            </Link>
-            <Link to="/login">
-              <Button variant="outline">Sign In</Button>
-            </Link>
-            <Link to="/signup">
-              <Button className="bg-gradient-to-r from-primary to-accent hover:opacity-90">
-                Get Started
-              </Button>
-            </Link>
+            {user ? (
+              <>
+                <Link to="/dashboard">
+                  <Button variant="ghost">Dashboard</Button>
+                </Link>
+                <Button 
+                  variant="outline" 
+                  onClick={signOut}
+                  className="flex items-center gap-2"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Déconnexion
+                </Button>
+              </>
+            ) : (
+              <>
+                <Link to="/auth">
+                  <Button variant="outline">Connexion</Button>
+                </Link>
+                <Link to="/auth">
+                  <Button className="bg-gradient-to-r from-primary to-accent hover:opacity-90">
+                    Commencer
+                  </Button>
+                </Link>
+              </>
+            )}
           </div>
         </div>
       </div>

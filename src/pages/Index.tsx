@@ -33,7 +33,7 @@ const Index = () => {
             </p>
             
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center pt-4">
-              <Link to="/signup">
+              <Link to="/auth">
                 <Button 
                   size="lg" 
                   className="bg-gradient-to-r from-primary to-accent hover:opacity-90 text-lg px-8 h-14"
@@ -41,9 +41,9 @@ const Index = () => {
                   Commencer gratuitement
                 </Button>
               </Link>
-              <Link to="/demo">
+              <Link to="/auth">
                 <Button size="lg" variant="outline" className="text-lg px-8 h-14">
-                  Voir la démo
+                  Se connecter
                 </Button>
               </Link>
             </div>
@@ -113,7 +113,7 @@ const Index = () => {
               <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
                 Rejoignez des milliers de créateurs qui utilisent déjà VideoAI pour produire du contenu exceptionnel.
               </p>
-              <Link to="/signup">
+              <Link to="/auth">
                 <Button 
                   size="lg" 
                   className="bg-gradient-to-r from-primary to-accent hover:opacity-90 text-lg px-8 h-14"
