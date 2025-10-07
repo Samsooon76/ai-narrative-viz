@@ -85,10 +85,17 @@ const CreateVideo = () => {
         body: { topic, type: 'script' }
       });
 
+      console.log('Response data:', data);
+      console.log('Response error:', error);
+
       if (error) throw error;
       if (!data || !data.script) {
+        console.error('Data structure:', data);
         throw new Error('Aucun script reçu');
       }
+
+      console.log('Script data:', data.script);
+      console.log('Script scenes:', data.script.scenes);
 
       setScriptData(data.script);
       setEditedScriptJson(JSON.stringify(data.script, null, 2));
