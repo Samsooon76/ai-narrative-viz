@@ -94,7 +94,16 @@ const CreateVideo = () => {
           ? JSON.parse(data.images_data)
           : data.images_data;
         
-        if (typeof imagesData === 'object' && !Array.isArray(imagesData)) {
+        // Handle both object and array formats
+        if (Array.isArray(imagesData)) {
+          setGeneratedImages(imagesData);
+          // Create selectedImages from array
+          const selected: Record<number, string> = {};
+          imagesData.forEach((img: GeneratedImage) => {
+            selected[img.sceneNumber] = img.imageUrl;
+          });
+          setSelectedImages(selected);
+        } else if (typeof imagesData === 'object' && imagesData !== null) {
           // Convert object to GeneratedImage array
           const imagesArray: GeneratedImage[] = Object.entries(imagesData).map(([sceneNumber, imageUrl]) => ({
             sceneNumber: parseInt(sceneNumber),
@@ -107,7 +116,7 @@ const CreateVideo = () => {
       }
 
       // Determine which step to show
-      if (data.status === 'completed' || data.images_data) {
+      if (data.status === 'completed' || (data.images_data && Object.keys(data.images_data).length > 0)) {
         setCurrentStep('images');
       } else if (data.script) {
         setCurrentStep('script');
