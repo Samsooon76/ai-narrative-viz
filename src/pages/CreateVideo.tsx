@@ -4,14 +4,12 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Wand2, Volume2, Image, Check, Edit2, Loader2, RefreshCw, Download, Video } from "lucide-react";
+import { Wand2, Volume2, Image, Check, Edit2, Loader2, RefreshCw, Download } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useAuth } from "@/lib/auth";
 import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
-import { AnimationModal } from "@/components/AnimationModal";
 
 type Step = 'topic' | 'script' | 'images' | 'complete';
 
@@ -58,10 +56,6 @@ const CreateVideo = () => {
   const [selectedImages, setSelectedImages] = useState<Record<number, string>>({});
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [projectId, setProjectId] = useState<string | null>(null);
-  
-  // Animation modal
-  const [animationModalOpen, setAnimationModalOpen] = useState(false);
-  const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(null);
 
   // Load existing project if project ID is in URL
   useEffect(() => {
@@ -419,57 +413,6 @@ const CreateVideo = () => {
       });
     } finally {
       setIsGeneratingImage(false);
-    }
-  };
-
-  const handleAnimateImage = (index: number) => {
-    setSelectedImageIndex(index);
-    setAnimationModalOpen(true);
-  };
-
-  const createAnimation = async (params: {
-    mode: 'auto' | 'advanced';
-    motionPrompt?: string;
-    durationTargetSec: number;
-    loop: boolean;
-  }) => {
-    if (!projectId || selectedImageIndex === null) {
-      toast({
-        title: "Erreur",
-        description: "Projet ou image non sélectionné",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Non authentifié');
-
-      const { data, error } = await supabase.functions.invoke('create-animation', {
-        body: {
-          videoProjectId: projectId,
-          imageIndex: selectedImageIndex,
-          ...params
-        }
-      });
-
-      if (error) throw error;
-
-      toast({
-        title: "Animation créée",
-        description: data.message || "L'animation a été créée avec succès",
-      });
-
-      console.log('Animation créée:', data);
-    } catch (error: any) {
-      console.error('Erreur création animation:', error);
-      toast({
-        title: "Erreur",
-        description: error.message || "Impossible de créer l'animation",
-        variant: "destructive",
-      });
-      throw error;
     }
   };
 
@@ -837,16 +780,6 @@ const CreateVideo = () => {
                               <div className="absolute top-2 right-2 bg-primary text-primary-foreground px-2 py-1 rounded-md text-xs font-medium">
                                 ✓ Générée
                               </div>
-                              <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center">
-                                <Button
-                                  onClick={() => handleAnimateImage(scene.scene_number - 1)}
-                                  size="sm"
-                                  className="bg-white text-black hover:bg-white/90"
-                                >
-                                  <Video className="h-4 w-4 mr-2" />
-                                  Animer cette image
-                                </Button>
-                              </div>
                             </div>
                           ) : (
                             <div className="w-full aspect-[9/16] bg-background/30 rounded-lg border-2 border-dashed border-border/40 flex items-center justify-center">
@@ -884,17 +817,6 @@ const CreateVideo = () => {
           )}
         </div>
       </div>
-
-      {/* Animation Modal */}
-      {selectedImageIndex !== null && (
-        <AnimationModal
-          open={animationModalOpen}
-          onOpenChange={setAnimationModalOpen}
-          imageIndex={selectedImageIndex}
-          imageUrl={generatedImages[selectedImageIndex]?.imageUrl || ''}
-          onAnimate={createAnimation}
-        />
-      )}
     </div>
   );
 };
