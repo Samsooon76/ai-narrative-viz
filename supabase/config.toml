@@ -5,9 +5,3 @@ verify_jwt = true
 
 [functions.generate-image]
 verify_jwt = true
-
-[functions.create-animation]
-verify_jwt = true
-
-[functions.animation-status]
-verify_jwt = true
