@@ -364,7 +364,7 @@ const CreateVideo = () => {
   };
 
   const regenerateImage = async (sceneNumber: number) => {
-    if (!scriptData) return;
+    if (!scriptData || !projectId) return;
     
     const scene = scriptData.scenes.find(s => s.scene_number === sceneNumber);
     if (!scene) return;
@@ -387,6 +387,8 @@ const CreateVideo = () => {
       
       const prompt = `Create a 9:16 vertical portrait image for: ${scene.visual}. Style: ${stylePrompt}`;
 
+      console.log(`Régénération de la scène ${sceneNumber}...`);
+
       const { data, error } = await supabase.functions.invoke('generate-image', {
         body: { 
           prompt,
@@ -394,8 +396,15 @@ const CreateVideo = () => {
         }
       });
 
-      if (error) throw error;
+      console.log('Réponse de generate-image:', { data, error });
+
+      if (error) {
+        console.error('Erreur de l\'edge function:', error);
+        throw error;
+      }
+      
       if (!data || !data.imageUrl) {
+        console.error('Pas d\'imageUrl dans la réponse:', data);
         throw new Error('Aucune image générée');
       }
 
@@ -405,16 +414,24 @@ const CreateVideo = () => {
         prompt
       };
 
-      // Replace the image for this scene
-      setGeneratedImages(prev => 
-        prev.map(img => img.sceneNumber === sceneNumber ? newImage : img)
-      );
-      
-      // Auto-select the new image
+      // Update local state
+      const updatedImages = generatedImages.some(img => img.sceneNumber === sceneNumber)
+        ? generatedImages.map(img => img.sceneNumber === sceneNumber ? newImage : img)
+        : [...generatedImages, newImage];
+
+      setGeneratedImages(updatedImages);
       setSelectedImages(prev => ({
         ...prev,
         [sceneNumber]: data.imageUrl
       }));
+
+      // Save to database
+      await supabase
+        .from('video_projects')
+        .update({ 
+          images_data: JSON.stringify(updatedImages)
+        })
+        .eq('id', projectId);
       
       toast({
         title: "Image régénérée !",
