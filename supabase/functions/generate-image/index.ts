@@ -36,7 +36,23 @@ serve(async (req) => {
       body: JSON.stringify({
         model: 'google/gemini-2.5-flash-image-preview',
         messages: [
-          { role: 'user', content: prompt }
+          { 
+            role: 'user', 
+            content: `Create a highly dynamic and cinematic 9:16 vertical portrait image perfect for animation and video storytelling.
+
+IMAGE REQUIREMENTS:
+- Dynamic composition with clear action or movement potential
+- Expressive characters with strong emotions and gestures
+- Dramatic lighting that creates depth and atmosphere
+- Compelling foreground and background elements for parallax animation
+- Cinematic framing with visual storytelling elements
+- Rich details that will be captivating when animated
+
+SCENE TO ILLUSTRATE:
+${prompt}
+
+Generate a visually stunning image in English that tells a story and can be brought to life through animation. Focus on drama, movement potential, and captivating visual details.` 
+          }
         ],
         modalities: ['image', 'text']
       }),

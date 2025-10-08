@@ -78,10 +78,7 @@ serve(async (req) => {
         ? styleMap[visualStyle] || ''
         : '';
 
-      systemPrompt = `Tu es un scénariste expert spécialisé dans les histoires intrigantes et captivantes pour vidéos courtes. 
-Tu dois créer des scripts engageants qui captivent l'audience dès les premières secondes.
-Le script doit être structuré en scènes claires, avec une narration fluide et un rythme dynamique.
-Durée visée: 60 secondes de vidéo.${styleInstructions}
+      systemPrompt = `Tu es un scénariste expert spécialisé dans les histoires dramatiques captivantes pour vidéos courtes.${styleInstructions}
 
 Tu DOIS répondre UNIQUEMENT avec un objet JSON valide dans ce format exact:
 {
@@ -90,25 +87,54 @@ Tu DOIS répondre UNIQUEMENT avec un objet JSON valide dans ce format exact:
   "scenes": [
     {
       "scene_number": 1,
-      "title": "HOOK",
-      "visual": "Description détaillée du visuel",
+      "title": "CONTEXTE",
+      "visual": "Description détaillée du visuel pour animation",
       "narration": "Texte de la narration"
     }
   ]
 }`;
 
-      userPrompt = `Crée un script captivant pour une vidéo sur le sujet suivant: "${topic}"
+      userPrompt = `Rédige une HISTOIRE dramatique en respectant le format et le rythme indiqués pour le sujet suivant: "${topic}"
 
-Le script doit inclure:
-1. Un titre accrocheur
-2. Une description de musique d'ambiance appropriée
-3. 10-12 scènes dynamiques (pour une vidéo vivante d'une minute) avec pour chacune:
-   - Un numéro de scène
-   - Un titre court et percutant
-   - Une description visuelle TRÈS détaillée (intégrant le style imposé si spécifié)
-   - Le texte de narration (2-3 phrases courtes maximum par scène)
+Suis EXACTEMENT cette structure en 7 parties:
 
-Chaque scène doit durer environ 5-6 secondes.
+🟢 CONTEXTE (PARTIE 1)
+- Commence par la date et le lieu : "Nous sommes en [année]. [Ville ou pays]."
+- Présente les personnages et le décor en quelques lignes simples et factuelles
+- Ajoute une norme culturelle ou historique choquante
+
+🔸 PETIT REVIREMENT (PARTIE 2)
+- Utilise une phrase de transition ("Et pendant un certain temps... cela a fonctionné.")
+- Ajoute une ou deux phrases montrant les premiers succès ou la montée de la tension
+
+⚫ REVIREMENT DE SITUATION (PARTIE 3)
+- Montre ce qui a mal tourné
+- Ajoute une trahison, une ambition ou une lutte de pouvoir
+- Termine par un changement dramatique (exil, chute, tournant)
+
+🟢 CONTEXTE (PARTIE 4)
+- Montre comment le personnage principal a réagi
+- Utilise des phrases d'action courtes
+- Mentionne une alliance importante si cela est pertinent
+
+🔸 PETIT REVIREMENT (PARTIE 5)
+- Utilise une ligne de tension discrète
+- N'en dis pas trop : mouvement furtif ou préparatoire
+
+⚫ CONSÉQUENCE FINALE (PARTIE 6)
+- Révèle l'événement majeur ou ses répercussions
+- Garde le mystère
+
+🟡 RÉVÉLATION (PARTIE 7)
+- Punchline finale avec identité : "Et la [fille/l'homme/le lieu] qui a fait cela... était [nom]."
+
+Pour CHAQUE scène, crée une description visuelle ANIMABLE:
+- Inclus du mouvement et de l'action (personnages en mouvement, éléments dynamiques)
+- Décris l'atmosphère et l'éclairage pour créer du drame
+- Ajoute des détails visuels captivants (expressions, gestes, environnement vivant)
+- Pense "cinéma" : cadrages, mouvements de caméra implicites
+
+Le script doit contenir 10-12 scènes au total (durée visée: 60 secondes).
 
 IMPORTANT: Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
     } else if (type === 'prompts') {
