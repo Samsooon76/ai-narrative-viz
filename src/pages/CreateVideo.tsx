@@ -762,54 +762,57 @@ const CreateVideo = () => {
                     </div>
                   </Card>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {scriptData.scenes.map((scene) => {
-                      const generatedImage = generatedImages.find(img => img.sceneNumber === scene.scene_number);
-                      
-                      return (
-                        <Card key={scene.scene_number} className="p-4 border-border/40 bg-gradient-to-br from-card/60 to-card/40 backdrop-blur-sm space-y-3">
-                          <div className="flex items-start justify-between">
-                            <div>
-                              <h4 className="font-semibold">Scène {scene.scene_number}</h4>
-                              <p className="text-xs text-muted-foreground">{scene.title}</p>
-                            </div>
-                            {generatedImage && (
+                  <div className="overflow-x-auto pb-4">
+                    <div className="flex gap-4 min-w-max">
+                      {scriptData.scenes.map((scene) => {
+                        const generatedImage = generatedImages.find(img => img.sceneNumber === scene.scene_number);
+                        
+                        return (
+                          <Card key={scene.scene_number} className="w-64 flex-shrink-0 p-4 border-border/40 bg-gradient-to-br from-card/60 to-card/40 backdrop-blur-sm space-y-3">
+                            <div className="flex items-start justify-between">
+                              <div>
+                                <h4 className="font-semibold">Scène {scene.scene_number}</h4>
+                                <p className="text-xs text-muted-foreground line-clamp-1">{scene.title}</p>
+                              </div>
                               <Button
                                 onClick={() => regenerateImage(scene.scene_number)}
                                 disabled={isGeneratingImage}
                                 size="sm"
                                 variant="outline"
+                                className="ml-2"
                               >
-                                <RefreshCw className="h-3 w-3 mr-1" />
-                                Refaire
+                                <RefreshCw className="h-3 w-3" />
                               </Button>
-                            )}
-                          </div>
+                            </div>
 
-                           {generatedImage ? (
-                            <div className="relative group">
-                              <img 
-                                src={generatedImage.imageUrl} 
-                                alt={`Scène ${scene.scene_number}`}
-                                className="w-full aspect-[9/16] object-cover rounded-lg border-2 border-border/40"
-                              />
-                              <div className="absolute top-2 right-2 bg-primary text-primary-foreground px-2 py-1 rounded-md text-xs font-medium">
-                                ✓ Générée
+                             {generatedImage ? (
+                              <div className="relative group">
+                                <img 
+                                  src={generatedImage.imageUrl} 
+                                  alt={`Scène ${scene.scene_number}`}
+                                  className="w-full aspect-[9/16] object-cover rounded-lg border-2 border-border/40"
+                                  onError={(e) => {
+                                    e.currentTarget.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="100" height="100" fill="%23333"/><text x="50%" y="50%" text-anchor="middle" fill="%23999" font-size="12">Erreur</text></svg>';
+                                  }}
+                                />
+                                <div className="absolute top-2 right-2 bg-primary text-primary-foreground px-2 py-1 rounded-md text-xs font-medium">
+                                  ✓ Générée
+                                </div>
                               </div>
-                            </div>
-                          ) : (
-                            <div className="w-full aspect-[9/16] bg-background/30 rounded-lg border-2 border-dashed border-border/40 flex items-center justify-center">
-                              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                            </div>
-                          )}
+                            ) : (
+                              <div className="w-full aspect-[9/16] bg-background/30 rounded-lg border-2 border-dashed border-border/40 flex items-center justify-center">
+                                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                              </div>
+                            )}
 
-                          <div className="space-y-1">
-                            <p className="text-xs text-muted-foreground">Visual:</p>
-                            <p className="text-xs line-clamp-2">{scene.visual}</p>
-                          </div>
-                        </Card>
-                      );
-                    })}
+                            <div className="space-y-1">
+                              <p className="text-xs text-muted-foreground">Visual:</p>
+                              <p className="text-xs line-clamp-2">{scene.visual}</p>
+                            </div>
+                          </Card>
+                        );
+                      })}
+                    </div>
                   </div>
 
                   <Card className="p-6 border-border/40 bg-gradient-to-br from-card/60 to-card/40 backdrop-blur-sm">
