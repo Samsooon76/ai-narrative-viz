@@ -260,7 +260,7 @@ const CreateVideo = () => {
   };
 
   const generateAllImages = async () => {
-    if (!scriptData) return;
+    if (!scriptData || !projectId) return;
     
     setIsGeneratingImage(true);
     
@@ -276,6 +276,8 @@ const CreateVideo = () => {
     const stylePrompt = visualStyle && visualStyle !== 'none'
       ? styleMap[visualStyle] || 'Cinematic, dramatic lighting, high quality, professional video production.'
       : 'Cinematic, dramatic lighting, high quality, professional video production.';
+
+    const allGeneratedImages: GeneratedImage[] = [];
 
     try {
       // Generate all images in parallel
@@ -295,12 +297,35 @@ const CreateVideo = () => {
             throw new Error('Aucune image générée');
           }
 
-          return {
+          const newImage = {
             sceneNumber: scene.scene_number,
             imageUrl: data.imageUrl,
             prompt,
             success: true
           };
+
+          // Save to database immediately
+          allGeneratedImages.push(newImage);
+          await supabase
+            .from('video_projects')
+            .update({ 
+              images_data: JSON.stringify(allGeneratedImages)
+            })
+            .eq('id', projectId);
+
+          // Update UI in real-time
+          setGeneratedImages([...allGeneratedImages]);
+          setSelectedImages(prev => ({
+            ...prev,
+            [scene.scene_number]: data.imageUrl
+          }));
+
+          toast({
+            title: `Image ${allGeneratedImages.length}/${scriptData.scenes.length}`,
+            description: `Scène: ${scene.title}`
+          });
+
+          return newImage;
         } catch (error: any) {
           console.error(`Erreur scène ${scene.scene_number}:`, error);
           toast({
@@ -319,26 +344,11 @@ const CreateVideo = () => {
 
       const results = await Promise.all(imagePromises);
       
-      // Filter successful results
       const successfulImages = results.filter(r => r.success);
-      const newImages: GeneratedImage[] = successfulImages.map(({ sceneNumber, imageUrl, prompt }) => ({
-        sceneNumber,
-        imageUrl,
-        prompt
-      }));
-      
-      // Update state with all images at once
-      setGeneratedImages(newImages);
-      
-      const newSelectedImages: Record<number, string> = {};
-      newImages.forEach(img => {
-        newSelectedImages[img.sceneNumber] = img.imageUrl;
-      });
-      setSelectedImages(newSelectedImages);
 
       toast({
         title: "Génération terminée !",
-        description: `${successfulImages.length}/${scriptData.scenes.length} images créées avec succès`
+        description: `${successfulImages.length}/${scriptData.scenes.length} images créées`
       });
     } catch (error: any) {
       console.error('Erreur génération images:', error);
