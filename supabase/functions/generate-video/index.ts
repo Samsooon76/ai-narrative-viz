@@ -127,7 +127,10 @@ serve(async (req) => {
         await new Promise(resolve => setTimeout(resolve, 5000));
         
         const statusResponse = await fetch(statusUrl, {
-          headers: { 'Authorization': `Bearer ${HF_TOKEN}` },
+          headers: { 
+            'Authorization': `Bearer ${HF_TOKEN}`,
+            'Content-Type': 'application/json'
+          },
         });
 
         if (!statusResponse.ok) {
@@ -141,7 +144,10 @@ serve(async (req) => {
 
         if (statusData.status === 'COMPLETED') {
           const resultResponse = await fetch(responseUrl, {
-            headers: { 'Authorization': `Bearer ${HF_TOKEN}` },
+            headers: { 
+              'Authorization': `Bearer ${HF_TOKEN}`,
+              'Content-Type': 'application/json'
+            },
           });
 
           if (!resultResponse.ok) {
