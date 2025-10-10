@@ -10,6 +10,7 @@ import { useAuth } from "@/lib/auth";
 import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
+import { VideoTimeline } from "@/components/VideoTimeline";
 
 type Step = 'topic' | 'script' | 'images' | 'complete';
 
@@ -563,10 +564,10 @@ const CreateVideo = () => {
       const JSZip = (await import('jszip')).default;
       const zip = new JSZip();
 
-      // Convert base64 images to blob and add to zip
+      // Download images from URLs and add to zip
       for (const image of generatedImages) {
-        const base64Data = image.imageUrl.split(',')[1];
-        const blob = await fetch(image.imageUrl).then(r => r.blob());
+        const response = await fetch(image.imageUrl);
+        const blob = await response.blob();
         zip.file(`scene_${image.sceneNumber}.png`, blob);
       }
 
