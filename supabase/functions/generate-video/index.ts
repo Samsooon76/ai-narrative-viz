@@ -28,26 +28,44 @@ serve(async (req) => {
     console.log('Génération vidéo pour:', sceneTitle);
 
     // Télécharger l'image depuis l'URL
-    const imageResponse = await fetch(imageUrl);
-    if (!imageResponse.ok) {
-      throw new Error('Impossible de télécharger l\'image');
+    let imageBuffer: ArrayBuffer;
+    
+    if (imageUrl.startsWith('data:')) {
+      // Handle base64 data URL
+      const base64Data = imageUrl.split(',')[1];
+      const binaryString = atob(base64Data);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      imageBuffer = bytes.buffer;
+    } else {
+      // Handle regular URL
+      const imageResponse = await fetch(imageUrl);
+      if (!imageResponse.ok) {
+        throw new Error('Impossible de télécharger l\'image');
+      }
+      imageBuffer = await imageResponse.arrayBuffer();
     }
-    const imageBlob = await imageResponse.blob();
-    const imageBuffer = await imageBlob.arrayBuffer();
 
-    // Créer le FormData pour l'API Hugging Face
-    const formData = new FormData();
-    formData.append('image', new Blob([imageBuffer]), 'image.png');
-    formData.append('prompt', prompt);
-    formData.append('model', 'chetwinlow1/Ovi');
-
-    const response = await fetch('https://api-inference.huggingface.co/models/image-to-video', {
+    // Utiliser l'API HuggingFace Inference avec le provider fal-ai
+    // L'endpoint correct est celui du modèle spécifique
+    const response = await fetch('https://api-inference.huggingface.co/models/chetwinlow1/Ovi', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${HUGGING_FACE_API_KEY}`,
-        'x-use-provider': 'fal-ai',
+        'Content-Type': 'application/json',
+        'x-use-cache': 'false',
       },
-      body: formData,
+      body: JSON.stringify({
+        inputs: {
+          image: Array.from(new Uint8Array(imageBuffer)),
+          prompt: prompt,
+        },
+        parameters: {
+          provider: 'fal-ai',
+        }
+      }),
     });
 
     if (!response.ok) {
@@ -67,22 +85,59 @@ serve(async (req) => {
           { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
+
+      if (response.status === 503) {
+        return new Response(
+          JSON.stringify({ error: 'Le modèle est en cours de chargement. Réessayez dans quelques secondes.' }),
+          { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
       
-      throw new Error(`Erreur API: ${response.status}`);
+      throw new Error(`Erreur API: ${response.status} - ${errorText}`);
     }
 
-    // Récupérer la vidéo générée
-    const videoBlob = await response.blob();
-    const videoBuffer = await videoBlob.arrayBuffer();
-    const videoBase64 = btoa(String.fromCharCode(...new Uint8Array(videoBuffer)));
-    const videoUrl = `data:video/mp4;base64,${videoBase64}`;
+    // Récupérer la vidéo générée (peut être en format binaire)
+    const contentType = response.headers.get('content-type');
     
-    console.log('Vidéo générée avec succès');
+    if (contentType && contentType.includes('video')) {
+      // La réponse est directement une vidéo
+      const videoBlob = await response.blob();
+      const videoBuffer = await videoBlob.arrayBuffer();
+      const videoBase64 = btoa(String.fromCharCode(...new Uint8Array(videoBuffer)));
+      const videoUrl = `data:video/mp4;base64,${videoBase64}`;
+      
+      console.log('Vidéo générée avec succès');
 
-    return new Response(
-      JSON.stringify({ videoUrl }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+      return new Response(
+        JSON.stringify({ videoUrl }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    } else {
+      // La réponse est en JSON avec l'URL ou les données
+      const data = await response.json();
+      console.log('Réponse API:', JSON.stringify(data).substring(0, 200));
+      
+      // Adapter selon la structure de réponse réelle de l'API
+      let videoUrl;
+      if (data.video) {
+        videoUrl = data.video;
+      } else if (data.url) {
+        videoUrl = data.url;
+      } else if (Array.isArray(data) && data.length > 0) {
+        // Si la réponse est un array de bytes
+        const videoBase64 = btoa(String.fromCharCode(...new Uint8Array(data)));
+        videoUrl = `data:video/mp4;base64,${videoBase64}`;
+      } else {
+        throw new Error('Format de réponse inattendu: ' + JSON.stringify(data).substring(0, 100));
+      }
+      
+      console.log('Vidéo générée avec succès');
+
+      return new Response(
+        JSON.stringify({ videoUrl }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
   } catch (error) {
     console.error('Erreur dans generate-video:', error);
