@@ -107,63 +107,117 @@ serve(async (req) => {
       throw new Error(`Erreur HuggingFace: ${hfResponse.status} - ${errorText}`);
     }
 
-    const hfData = await hfResponse.json();
-    console.log('Réponse HuggingFace:', JSON.stringify(hfData).substring(0, 200));
+    const queueData = await hfResponse.json();
+    console.log('Request soumis à la queue HuggingFace:', JSON.stringify(queueData).substring(0, 200));
 
-    // Extraire l'URL de la vidéo générée
-    const videoUrl = hfData.video?.url || hfData.url;
+    // Polling du statut jusqu'à ce que la vidéo soit prête
+    const statusUrl = queueData.status_url;
+    const responseUrl = queueData.response_url;
     
-    if (!videoUrl) {
-      console.error('Pas d\'URL vidéo dans la réponse:', hfData);
-      throw new Error('Pas d\'URL vidéo retournée par HuggingFace');
+    if (!statusUrl || !responseUrl) {
+      throw new Error('URLs de polling manquantes dans la réponse HuggingFace');
     }
 
-    console.log('Vidéo générée, téléchargement depuis:', videoUrl.substring(0, 100));
-
-    // Télécharger la vidéo
-    const videoResponse = await fetch(videoUrl);
-    if (!videoResponse.ok) {
-      throw new Error(`Impossible de télécharger la vidéo: ${videoResponse.status}`);
-    }
-
-    const videoArrayBuffer = await videoResponse.arrayBuffer();
-    const videoBuffer = new Uint8Array(videoArrayBuffer);
-
-    console.log('Vidéo téléchargée, taille:', videoBuffer.length, 'bytes. Upload vers Storage...');
-
-    // Upload vers Supabase Storage
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
-
-    const fileName = `scene-${sceneTitle?.replace(/[^a-z0-9]/gi, '-').toLowerCase() || Date.now()}-${Date.now()}.mp4`;
-    const filePath = `${fileName}`;
-
-    const { data: uploadData, error: uploadError } = await supabase.storage
-      .from('animation-videos')
-      .upload(filePath, videoBuffer, {
-        contentType: 'video/mp4',
-        cacheControl: '3600',
-        upsert: false
+    let attempts = 0;
+    const maxAttempts = 60; // 5 minutes max (5s * 60)
+    
+    console.log('Polling status_url:', statusUrl);
+    
+    while (attempts < maxAttempts) {
+      await new Promise(resolve => setTimeout(resolve, 5000)); // Attendre 5 secondes
+      
+      const statusResponse = await fetch(statusUrl, {
+        headers: {
+          'Authorization': `Bearer ${HF_TOKEN}`,
+        },
       });
 
-    if (uploadError) {
-      console.error('Erreur upload Storage:', uploadError);
-      throw new Error(`Erreur upload: ${uploadError.message}`);
+      if (!statusResponse.ok) {
+        console.error('Erreur status polling:', statusResponse.status);
+        attempts++;
+        continue;
+      }
+
+      const statusData = await statusResponse.json();
+      console.log('Status:', statusData.status);
+
+      if (statusData.status === 'COMPLETED') {
+        // Récupérer le résultat final
+        const resultResponse = await fetch(responseUrl, {
+          headers: {
+            'Authorization': `Bearer ${HF_TOKEN}`,
+          },
+        });
+
+        if (!resultResponse.ok) {
+          throw new Error('Impossible de récupérer le résultat');
+        }
+
+        const resultData = await resultResponse.json();
+        console.log('Réponse finale HuggingFace:', JSON.stringify(resultData).substring(0, 200));
+
+        // Extraire l'URL de la vidéo générée
+        const videoUrl = resultData.video?.url || resultData.url;
+        
+        if (!videoUrl) {
+          console.error('Pas d\'URL vidéo dans la réponse:', resultData);
+          throw new Error('Pas d\'URL vidéo retournée par HuggingFace');
+        }
+
+        console.log('Vidéo générée, téléchargement depuis:', videoUrl.substring(0, 100));
+
+        // Télécharger la vidéo
+        const videoResponse = await fetch(videoUrl);
+        if (!videoResponse.ok) {
+          throw new Error(`Impossible de télécharger la vidéo: ${videoResponse.status}`);
+        }
+
+        const videoArrayBuffer = await videoResponse.arrayBuffer();
+        const videoBuffer = new Uint8Array(videoArrayBuffer);
+
+        console.log('Vidéo téléchargée, taille:', videoBuffer.length, 'bytes. Upload vers Storage...');
+
+        // Upload vers Supabase Storage
+        const supabase = createClient(
+          Deno.env.get('SUPABASE_URL') ?? '',
+          Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+        );
+
+        const fileName = `scene-${sceneTitle?.replace(/[^a-z0-9]/gi, '-').toLowerCase() || Date.now()}-${Date.now()}.mp4`;
+        const filePath = `${fileName}`;
+
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('animation-videos')
+          .upload(filePath, videoBuffer, {
+            contentType: 'video/mp4',
+            cacheControl: '3600',
+            upsert: false
+          });
+
+        if (uploadError) {
+          console.error('Erreur upload Storage:', uploadError);
+          throw new Error(`Erreur upload: ${uploadError.message}`);
+        }
+
+        // Obtenir l'URL publique
+        const { data: { publicUrl } } = supabase.storage
+          .from('animation-videos')
+          .getPublicUrl(filePath);
+
+        console.log('Vidéo uploadée avec succès:', publicUrl);
+
+        return new Response(
+          JSON.stringify({ videoUrl: publicUrl }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      } else if (statusData.status === 'FAILED') {
+        throw new Error('La génération vidéo a échoué');
+      }
+      
+      attempts++;
     }
-
-    // Obtenir l'URL publique
-    const { data: { publicUrl } } = supabase.storage
-      .from('animation-videos')
-      .getPublicUrl(filePath);
-
-    console.log('Vidéo uploadée avec succès:', publicUrl);
-
-    return new Response(
-      JSON.stringify({ videoUrl: publicUrl }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    
+    throw new Error('Timeout: La génération a pris trop de temps');
 
   } catch (error) {
     console.error('Erreur dans generate-video:', error);
