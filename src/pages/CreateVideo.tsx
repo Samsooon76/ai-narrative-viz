@@ -502,6 +502,8 @@ const CreateVideo = () => {
           imageUrl: generatedImage.imageUrl,
           prompt: scene.narration,
           sceneTitle: scene.title,
+          projectId: projectId,
+          sceneNumber: sceneNumber,
         }
       });
 
@@ -511,41 +513,65 @@ const CreateVideo = () => {
         throw new Error(data.error);
       }
 
-      // Update the generatedImages with video URL
-      setGeneratedImages(prev => 
-        prev.map(img => 
-          img.sceneNumber === sceneNumber 
-            ? { ...img, videoUrl: data.videoUrl }
-            : img
-        )
-      );
-
-      // Save to database
-      if (projectId) {
-        const updatedImages = generatedImages.map(img => 
-          img.sceneNumber === sceneNumber 
-            ? { sceneNumber: img.sceneNumber, imageUrl: img.imageUrl, prompt: img.prompt, videoUrl: data.videoUrl }
-            : { sceneNumber: img.sceneNumber, imageUrl: img.imageUrl, prompt: img.prompt, ...(img.videoUrl && { videoUrl: img.videoUrl }) }
-        );
-        
-        const { error: updateError } = await supabase
-          .from('video_projects')
-          .update({ 
-            images_data: updatedImages as any
-          })
-          .eq('id', projectId);
-
-        if (updateError) {
-          console.error('Erreur sauvegarde vidéo:', updateError);
-        }
-      }
-
       toast({
-        title: "Vidéo générée !",
-        description: `La vidéo pour la scène ${sceneNumber} a été générée avec succès`,
+        title: "Génération démarrée",
+        description: "La vidéo sera prête dans 1-2 minutes. Actualisez la page pour voir le résultat.",
       });
 
-      console.log(`Vidéo générée pour scène ${sceneNumber}`);
+      // Polling pour vérifier si la vidéo est prête
+      const pollInterval = setInterval(async () => {
+        const { data: project } = await supabase
+          .from('video_projects')
+          .select('images_data')
+          .eq('id', projectId)
+          .single();
+
+        if (project?.images_data) {
+          const imagesData = typeof project.images_data === 'string'
+            ? JSON.parse(project.images_data)
+            : project.images_data;
+
+          const updatedImage = Array.isArray(imagesData)
+            ? imagesData.find((img: any) => img.sceneNumber === sceneNumber)
+            : null;
+
+          if (updatedImage?.videoUrl) {
+            clearInterval(pollInterval);
+            
+            // Update local state
+            setGeneratedImages(prev => 
+              prev.map(img => 
+                img.sceneNumber === sceneNumber 
+                  ? { ...img, videoUrl: updatedImage.videoUrl }
+                  : img
+              )
+            );
+
+            setGeneratingVideoScenes(prev => {
+              const newSet = new Set(prev);
+              newSet.delete(sceneNumber);
+              return newSet;
+            });
+
+            toast({
+              title: "Vidéo générée !",
+              description: `La vidéo pour la scène ${sceneNumber} est prête`,
+            });
+          }
+        }
+      }, 10000); // Vérifier toutes les 10 secondes
+
+      // Arrêter le polling après 5 minutes
+      setTimeout(() => {
+        clearInterval(pollInterval);
+        setGeneratingVideoScenes(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(sceneNumber);
+          return newSet;
+        });
+      }, 300000);
+
+      console.log(`Génération démarrée pour scène ${sceneNumber}`);
 
     } catch (error: any) {
       console.error('Erreur génération vidéo:', error);
