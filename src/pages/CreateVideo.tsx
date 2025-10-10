@@ -520,11 +520,13 @@ const CreateVideo = () => {
 
       toast({
         title: "Génération démarrée",
-        description: "La vidéo sera prête dans 1-2 minutes. Actualisez la page pour voir le résultat.",
+        description: "La vidéo sera prête dans 1-2 minutes.",
       });
 
       // Polling pour vérifier si la vidéo est prête
       const pollInterval = setInterval(async () => {
+        console.log(`Vérification vidéo pour scène ${sceneNumber}...`);
+        
         const { data: project } = await supabase
           .from('video_projects')
           .select('images_data')
@@ -536,12 +538,18 @@ const CreateVideo = () => {
             ? JSON.parse(project.images_data)
             : project.images_data;
 
+          console.log('Images data reçues:', imagesData);
+
           const updatedImage = Array.isArray(imagesData)
             ? imagesData.find((img: any) => img.sceneNumber === sceneNumber)
             : null;
 
+          console.log('Image trouvée:', updatedImage);
+
           if (updatedImage?.videoUrl) {
             clearInterval(pollInterval);
+            
+            console.log('Vidéo trouvée!', updatedImage.videoUrl);
             
             // Update local state
             setGeneratedImages(prev => 
@@ -564,7 +572,7 @@ const CreateVideo = () => {
             });
           }
         }
-      }, 10000); // Vérifier toutes les 10 secondes
+      }, 2000); // Vérifier toutes les 2 secondes
 
       // Arrêter le polling après 5 minutes
       setTimeout(() => {
@@ -574,6 +582,7 @@ const CreateVideo = () => {
           newSet.delete(sceneNumber);
           return newSet;
         });
+        console.log(`Timeout polling pour scène ${sceneNumber}`);
       }, 300000);
 
       console.log(`Génération démarrée pour scène ${sceneNumber}`);
