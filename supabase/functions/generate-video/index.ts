@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -20,56 +21,31 @@ serve(async (req) => {
       );
     }
 
-    const HUGGING_FACE_API_KEY = Deno.env.get('HUGGING_FACE_API_KEY');
-    if (!HUGGING_FACE_API_KEY) {
-      throw new Error('HUGGING_FACE_API_KEY non configurée');
+    const FAL_KEY = Deno.env.get('FAL_KEY');
+    if (!FAL_KEY) {
+      throw new Error('FAL_KEY non configurée');
     }
 
-    console.log('Génération vidéo pour:', sceneTitle);
+    console.log('Génération vidéo avec fal.ai pour:', sceneTitle);
+    console.log('Image URL:', imageUrl.substring(0, 100));
 
-    // Télécharger l'image et la convertir en bytes
-    let imageBytes: Uint8Array;
-    
-    if (imageUrl.startsWith('data:')) {
-      // Handle base64 data URL
-      const base64Data = imageUrl.split(',')[1];
-      const binaryString = atob(base64Data);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
-      imageBytes = bytes;
-    } else {
-      // Handle regular URL
-      const imageResponse = await fetch(imageUrl);
-      if (!imageResponse.ok) {
-        throw new Error('Impossible de télécharger l\'image');
-      }
-      const arrayBuffer = await imageResponse.arrayBuffer();
-      imageBytes = new Uint8Array(arrayBuffer);
-    }
-
-    console.log('Image téléchargée, génération de la vidéo...');
-
-    // Utiliser l'API Provider de HuggingFace avec fal-ai
-    // Endpoint spécial pour les providers
-    const response = await fetch('https://api-inference.huggingface.co/providers/fal-ai/chetwinlow1/Ovi/image-to-video', {
+    // Appeler l'API fal.ai avec le modèle Ovi
+    const response = await fetch('https://fal.run/fal-ai/ovi/video', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${HUGGING_FACE_API_KEY}`,
+        'Authorization': `Key ${FAL_KEY}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        inputs: {
-          image: Array.from(imageBytes),
-          prompt: prompt,
-        }
+        image_url: imageUrl,
+        prompt: prompt,
+        duration: 4, // 4 secondes
       }),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Erreur API Hugging Face:', response.status, errorText);
+      console.error('Erreur API fal.ai:', response.status, errorText);
       
       if (response.status === 429) {
         return new Response(
@@ -80,61 +56,71 @@ serve(async (req) => {
       
       if (response.status === 402 || response.status === 403) {
         return new Response(
-          JSON.stringify({ error: 'Erreur d\'authentification ou crédits épuisés. Vérifiez votre clé API HuggingFace.' }),
+          JSON.stringify({ error: 'Erreur d\'authentification ou crédits épuisés. Vérifiez votre clé API fal.ai.' }),
           { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
-
-      if (response.status === 503) {
-        return new Response(
-          JSON.stringify({ error: 'Le modèle est en cours de chargement. Réessayez dans 20-30 secondes.' }),
-          { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
       
-      throw new Error(`Erreur API: ${response.status} - ${errorText}`);
+      throw new Error(`Erreur API fal.ai: ${response.status} - ${errorText}`);
     }
 
-    console.log('Vidéo générée, conversion en base64...');
+    const data = await response.json();
+    console.log('Réponse fal.ai:', JSON.stringify(data).substring(0, 200));
 
-    // La réponse devrait être la vidéo en binaire
-    const contentType = response.headers.get('content-type');
-    console.log('Content-Type:', contentType);
+    // Extraire l'URL de la vidéo générée
+    const videoUrl = data.video?.url || data.url;
     
-    if (contentType?.includes('application/json')) {
-      // Si c'est du JSON, lire le contenu
-      const jsonData = await response.json();
-      console.log('Réponse JSON:', JSON.stringify(jsonData).substring(0, 200));
-      
-      // Peut contenir une URL vers la vidéo
-      if (jsonData.video_url || jsonData.url) {
-        const videoFetchUrl = jsonData.video_url || jsonData.url;
-        const videoResponse = await fetch(videoFetchUrl);
-        const videoBlob = await videoResponse.blob();
-        const videoArrayBuffer = await videoBlob.arrayBuffer();
-        const videoBase64 = btoa(String.fromCharCode(...new Uint8Array(videoArrayBuffer)));
-        const videoUrl = `data:video/mp4;base64,${videoBase64}`;
-        
-        return new Response(
-          JSON.stringify({ videoUrl }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      } else {
-        throw new Error('Format de réponse inattendu: ' + JSON.stringify(jsonData).substring(0, 100));
-      }
-    } else {
-      // La réponse est directement la vidéo
-      const videoArrayBuffer = await response.arrayBuffer();
-      const videoBase64 = btoa(String.fromCharCode(...new Uint8Array(videoArrayBuffer)));
-      const videoUrl = `data:video/mp4;base64,${videoBase64}`;
-      
-      console.log('Vidéo générée avec succès, taille:', videoArrayBuffer.byteLength, 'bytes');
-
-      return new Response(
-        JSON.stringify({ videoUrl }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    if (!videoUrl) {
+      console.error('Pas d\'URL vidéo dans la réponse:', data);
+      throw new Error('Pas d\'URL vidéo retournée par fal.ai');
     }
+
+    console.log('Vidéo générée, téléchargement depuis:', videoUrl.substring(0, 100));
+
+    // Télécharger la vidéo depuis fal.ai
+    const videoResponse = await fetch(videoUrl);
+    if (!videoResponse.ok) {
+      throw new Error(`Impossible de télécharger la vidéo: ${videoResponse.status}`);
+    }
+
+    const videoArrayBuffer = await videoResponse.arrayBuffer();
+    const videoBuffer = new Uint8Array(videoArrayBuffer);
+
+    console.log('Vidéo téléchargée, taille:', videoBuffer.length, 'bytes. Upload vers Storage...');
+
+    // Upload vers Supabase Storage
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+
+    const fileName = `scene-${sceneTitle?.replace(/[^a-z0-9]/gi, '-').toLowerCase() || Date.now()}-${Date.now()}.mp4`;
+    const filePath = `${fileName}`;
+
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from('animation-videos')
+      .upload(filePath, videoBuffer, {
+        contentType: 'video/mp4',
+        cacheControl: '3600',
+        upsert: false
+      });
+
+    if (uploadError) {
+      console.error('Erreur upload Storage:', uploadError);
+      throw new Error(`Erreur upload: ${uploadError.message}`);
+    }
+
+    // Obtenir l'URL publique
+    const { data: { publicUrl } } = supabase.storage
+      .from('animation-videos')
+      .getPublicUrl(filePath);
+
+    console.log('Vidéo uploadée avec succès:', publicUrl);
+
+    return new Response(
+      JSON.stringify({ videoUrl: publicUrl }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
 
   } catch (error) {
     console.error('Erreur dans generate-video:', error);

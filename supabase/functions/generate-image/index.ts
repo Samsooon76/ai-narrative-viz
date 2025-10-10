@@ -100,10 +100,46 @@ Generate a visually stunning image in English that tells a story and can be brou
 
     const imageUrl = imageData.image_url.url;
     
-    console.log('Image générée avec succès');
+    console.log('Image générée avec succès, upload vers Storage...');
+
+    // Upload vers Supabase Storage au lieu de retourner base64
+    const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2.7.1');
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+
+    // Extraire les données de l'image
+    const base64Data = imageUrl.split(',')[1];
+    const imageBuffer = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+
+    // Créer un nom de fichier unique
+    const fileName = `scene-${sceneTitle?.replace(/[^a-z0-9]/gi, '-').toLowerCase() || Date.now()}-${Date.now()}.png`;
+    const filePath = `${fileName}`;
+
+    // Upload vers le bucket generated-images
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from('generated-images')
+      .upload(filePath, imageBuffer, {
+        contentType: 'image/png',
+        cacheControl: '3600',
+        upsert: false
+      });
+
+    if (uploadError) {
+      console.error('Erreur upload Storage:', uploadError);
+      throw new Error(`Erreur upload: ${uploadError.message}`);
+    }
+
+    // Obtenir l'URL publique
+    const { data: { publicUrl } } = supabase.storage
+      .from('generated-images')
+      .getPublicUrl(filePath);
+
+    console.log('Image uploadée avec succès:', publicUrl);
 
     return new Response(
-      JSON.stringify({ imageUrl }),
+      JSON.stringify({ imageUrl: publicUrl }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
