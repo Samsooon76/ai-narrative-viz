@@ -21,57 +21,81 @@ const Dashboard = () => {
   const { user, loading } = useAuth();
   const [projects, setProjects] = useState<VideoProject[]>([]);
   const [loadingProjects, setLoadingProjects] = useState(true);
+  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
     if (user) {
-      loadProjects();
+      loadProjectsWithCache();
     }
   }, [user]);
 
+  const loadProjectsWithCache = async () => {
+    // Charger le cache immédiatement
+    const cached = localStorage.getItem('dashboard_projects');
+    if (cached) {
+      try {
+        setProjects(JSON.parse(cached));
+        setLoadingProjects(false);
+      } catch (e) {
+        console.error('Cache invalide');
+      }
+    }
+
+    // Puis charger les données fraîches
+    await loadProjects();
+  };
+
   const loadProjects = async () => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000); // Timeout de 8 secondes
+
     try {
-      console.log('Chargement des projets...');
-      
-      // Requête simple et rapide sans images_data
       const { data, error } = await supabase
         .from('video_projects')
         .select('id, title, description, status, created_at')
         .order('created_at', { ascending: false })
-        .limit(50); // Limiter à 50 projets
+        .limit(50)
+        .abortSignal(controller.signal);
 
-      console.log('Projets chargés:', data?.length || 0);
+      clearTimeout(timeoutId);
 
-      if (error) {
-        console.error('Erreur Supabase:', error);
-        throw error;
-      }
+      if (error) throw error;
       
-      // Ajouter un compteur vide pour l'affichage
       const projectsData = (data || []).map(project => ({
         ...project,
-        images_data: [] // Ne pas charger les images
+        images_data: []
       }));
       
       setProjects(projectsData);
+      
+      // Sauvegarder en cache
+      localStorage.setItem('dashboard_projects', JSON.stringify(projectsData));
+      setRetryCount(0);
     } catch (error: any) {
+      clearTimeout(timeoutId);
       console.error('Erreur chargement projets:', error);
       
-      // Afficher un message plus spécifique
-      const errorMessage = error.message?.includes('timeout') 
-        ? 'La connexion a pris trop de temps. Réessayez dans quelques instants.'
-        : 'Impossible de charger les projets';
+      // Si on a un cache, garder l'affichage
+      const cached = localStorage.getItem('dashboard_projects');
+      if (!cached) {
+        setProjects([]);
+      }
+      
+      const errorMessage = error.name === 'AbortError'
+        ? 'Timeout: la base de données met trop de temps à répondre'
+        : error.message?.includes('timeout')
+        ? 'La connexion a pris trop de temps'
+        : 'Erreur de chargement';
         
       toast({
-        title: "Erreur",
-        description: errorMessage,
-        variant: "destructive"
+        title: "Mode dégradé",
+        description: cached 
+          ? "Données en cache affichées. " + errorMessage
+          : errorMessage,
+        variant: cached ? "default" : "destructive"
       });
-      
-      // Ne pas bloquer l'interface
-      setProjects([]);
     } finally {
       setLoadingProjects(false);
-      console.log('Chargement terminé');
     }
   };
 
@@ -146,12 +170,25 @@ const Dashboard = () => {
                   : 'Aucun projet pour le moment'}
               </p>
             </div>
-            <Link to="/create">
-              <Button className="bg-gradient-to-r from-primary to-accent hover:opacity-90">
-                <Plus className="h-4 w-4 mr-2" />
-                Nouveau projet
+            <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  setLoadingProjects(true);
+                  loadProjects();
+                }}
+                disabled={loadingProjects}
+              >
+                <Clock className="h-4 w-4 mr-2" />
+                Rafraîchir
               </Button>
-            </Link>
+              <Link to="/create">
+                <Button className="bg-gradient-to-r from-primary to-accent hover:opacity-90">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Nouveau projet
+                </Button>
+              </Link>
+            </div>
           </div>
 
           {/* Projects Grid */}
