@@ -28,42 +28,8 @@ serve(async (req) => {
 
     console.log('Génération vidéo avec HuggingFace pour:', sceneTitle);
 
-    // Si l'image est en base64, l'uploader d'abord vers Storage
-    let finalImageUrl = imageUrl;
-    
-    if (imageUrl.startsWith('data:image')) {
-      console.log('Image en base64 détectée, upload vers Storage...');
-      
-      const supabase = createClient(
-        Deno.env.get('SUPABASE_URL') ?? '',
-        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-      );
-
-      const base64Data = imageUrl.split(',')[1];
-      const imageBuffer = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
-
-      const fileName = `scene-${sceneTitle?.replace(/[^a-z0-9]/gi, '-').toLowerCase() || Date.now()}-${Date.now()}.png`;
-      
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('generated-images')
-        .upload(fileName, imageBuffer, {
-          contentType: 'image/png',
-          cacheControl: '3600',
-          upsert: true
-        });
-
-      if (uploadError) {
-        console.error('Erreur upload base64 vers Storage:', uploadError);
-        throw new Error(`Erreur upload image: ${uploadError.message}`);
-      }
-
-      const { data: { publicUrl } } = supabase.storage
-        .from('generated-images')
-        .getPublicUrl(fileName);
-
-      finalImageUrl = publicUrl;
-      console.log('Image uploadée vers Storage:', publicUrl);
-    }
+    // HuggingFace accepte directement les URLs base64, pas besoin de les uploader
+    const finalImageUrl = imageUrl;
 
     console.log('Appel API HuggingFace via router...');
 
