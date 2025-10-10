@@ -11,7 +11,15 @@ import Dashboard from "./pages/Dashboard";
 import CreateVideo from "./pages/CreateVideo";
 import NotFound from "./pages/NotFound";
 
-const queryClient = new QueryClient();
+// Créer QueryClient en dehors pour éviter les réinitialisations
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 1000 * 60 * 5, // 5 minutes
+      refetchOnWindowFocus: false, // Ne pas recharger au focus
+    },
+  },
+});
 
 const App: React.FC = () => {
   return (
