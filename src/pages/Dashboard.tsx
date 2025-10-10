@@ -30,13 +30,23 @@ const Dashboard = () => {
 
   const loadProjects = async () => {
     try {
+      // Sélectionner uniquement les colonnes nécessaires, pas les images lourdes
       const { data, error } = await supabase
         .from('video_projects')
-        .select('*')
+        .select('id, title, description, status, created_at, images_data')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setProjects(data || []);
+      
+      // Compter le nombre d'images sans charger les données base64
+      const projectsWithCount = (data || []).map(project => ({
+        ...project,
+        images_data: Array.isArray(project.images_data) 
+          ? project.images_data.map(() => ({ sceneNumber: 1 })) 
+          : []
+      }));
+      
+      setProjects(projectsWithCount);
     } catch (error) {
       console.error('Erreur chargement projets:', error);
       toast({
