@@ -12,11 +12,11 @@ serve(async (req) => {
   }
 
   try {
-    const { imageUrl, prompt, sceneTitle } = await req.json();
+    const { imageUrl, prompt, sceneTitle, projectId, sceneNumber } = await req.json();
     
-    if (!imageUrl || !prompt) {
+    if (!imageUrl || !prompt || !projectId || sceneNumber === undefined) {
       return new Response(
-        JSON.stringify({ error: 'L\'URL de l\'image et le prompt sont requis' }),
+        JSON.stringify({ error: 'imageUrl, prompt, projectId et sceneNumber sont requis' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -39,14 +39,11 @@ serve(async (req) => {
         Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
       );
 
-      // Extraire les données de l'image base64
       const base64Data = imageUrl.split(',')[1];
       const imageBuffer = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
 
-      // Créer un nom de fichier unique
       const fileName = `scene-${sceneTitle?.replace(/[^a-z0-9]/gi, '-').toLowerCase() || Date.now()}-${Date.now()}.png`;
       
-      // Upload vers le bucket
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('generated-images')
         .upload(fileName, imageBuffer, {
@@ -60,20 +57,17 @@ serve(async (req) => {
         throw new Error(`Erreur upload image: ${uploadError.message}`);
       }
 
-      // Obtenir l'URL publique
       const { data: { publicUrl } } = supabase.storage
         .from('generated-images')
         .getPublicUrl(fileName);
 
       finalImageUrl = publicUrl;
       console.log('Image uploadée vers Storage:', publicUrl);
-    } else {
-      console.log('Image URL publique fournie:', imageUrl.substring(0, 100));
     }
 
     console.log('Appel API HuggingFace via router...');
 
-    // Appeler HuggingFace router pour fal-ai/ovi
+    // Soumettre à HuggingFace
     const hfResponse = await fetch('https://router.huggingface.co/fal-ai/fal-ai/ovi/image-to-video?_subdomain=queue', {
       method: 'POST',
       headers: {
@@ -110,7 +104,6 @@ serve(async (req) => {
     const queueData = await hfResponse.json();
     console.log('Request soumis à la queue HuggingFace:', JSON.stringify(queueData).substring(0, 200));
 
-    // Polling du statut jusqu'à ce que la vidéo soit prête
     const statusUrl = queueData.status_url;
     const responseUrl = queueData.response_url;
     
@@ -118,106 +111,133 @@ serve(async (req) => {
       throw new Error('URLs de polling manquantes dans la réponse HuggingFace');
     }
 
-    let attempts = 0;
-    const maxAttempts = 60; // 5 minutes max (5s * 60)
-    
-    console.log('Polling status_url:', statusUrl);
-    
-    while (attempts < maxAttempts) {
-      await new Promise(resolve => setTimeout(resolve, 5000)); // Attendre 5 secondes
+    // Tâche en arrière-plan pour le polling et l'upload
+    const backgroundTask = async () => {
+      const supabase = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      );
+
+      let attempts = 0;
+      const maxAttempts = 60;
       
-      const statusResponse = await fetch(statusUrl, {
-        headers: {
-          'Authorization': `Bearer ${HF_TOKEN}`,
-        },
-      });
-
-      if (!statusResponse.ok) {
-        console.error('Erreur status polling:', statusResponse.status);
-        attempts++;
-        continue;
-      }
-
-      const statusData = await statusResponse.json();
-      console.log('Status:', statusData.status);
-
-      if (statusData.status === 'COMPLETED') {
-        // Récupérer le résultat final
-        const resultResponse = await fetch(responseUrl, {
-          headers: {
-            'Authorization': `Bearer ${HF_TOKEN}`,
-          },
+      console.log('Polling status_url:', statusUrl);
+      
+      while (attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        
+        const statusResponse = await fetch(statusUrl, {
+          headers: { 'Authorization': `Bearer ${HF_TOKEN}` },
         });
 
-        if (!resultResponse.ok) {
-          throw new Error('Impossible de récupérer le résultat');
+        if (!statusResponse.ok) {
+          console.error('Erreur status polling:', statusResponse.status);
+          attempts++;
+          continue;
         }
 
-        const resultData = await resultResponse.json();
-        console.log('Réponse finale HuggingFace:', JSON.stringify(resultData).substring(0, 200));
+        const statusData = await statusResponse.json();
+        console.log('Status:', statusData.status);
 
-        // Extraire l'URL de la vidéo générée
-        const videoUrl = resultData.video?.url || resultData.url;
-        
-        if (!videoUrl) {
-          console.error('Pas d\'URL vidéo dans la réponse:', resultData);
-          throw new Error('Pas d\'URL vidéo retournée par HuggingFace');
-        }
-
-        console.log('Vidéo générée, téléchargement depuis:', videoUrl.substring(0, 100));
-
-        // Télécharger la vidéo
-        const videoResponse = await fetch(videoUrl);
-        if (!videoResponse.ok) {
-          throw new Error(`Impossible de télécharger la vidéo: ${videoResponse.status}`);
-        }
-
-        const videoArrayBuffer = await videoResponse.arrayBuffer();
-        const videoBuffer = new Uint8Array(videoArrayBuffer);
-
-        console.log('Vidéo téléchargée, taille:', videoBuffer.length, 'bytes. Upload vers Storage...');
-
-        // Upload vers Supabase Storage
-        const supabase = createClient(
-          Deno.env.get('SUPABASE_URL') ?? '',
-          Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-        );
-
-        const fileName = `scene-${sceneTitle?.replace(/[^a-z0-9]/gi, '-').toLowerCase() || Date.now()}-${Date.now()}.mp4`;
-        const filePath = `${fileName}`;
-
-        const { data: uploadData, error: uploadError } = await supabase.storage
-          .from('animation-videos')
-          .upload(filePath, videoBuffer, {
-            contentType: 'video/mp4',
-            cacheControl: '3600',
-            upsert: false
+        if (statusData.status === 'COMPLETED') {
+          const resultResponse = await fetch(responseUrl, {
+            headers: { 'Authorization': `Bearer ${HF_TOKEN}` },
           });
 
-        if (uploadError) {
-          console.error('Erreur upload Storage:', uploadError);
-          throw new Error(`Erreur upload: ${uploadError.message}`);
+          if (!resultResponse.ok) {
+            console.error('Impossible de récupérer le résultat');
+            return;
+          }
+
+          const resultData = await resultResponse.json();
+          const videoUrl = resultData.video?.url || resultData.url;
+          
+          if (!videoUrl) {
+            console.error('Pas d\'URL vidéo dans la réponse:', resultData);
+            return;
+          }
+
+          console.log('Vidéo générée, téléchargement depuis:', videoUrl.substring(0, 100));
+
+          const videoResponse = await fetch(videoUrl);
+          if (!videoResponse.ok) {
+            console.error('Impossible de télécharger la vidéo');
+            return;
+          }
+
+          const videoArrayBuffer = await videoResponse.arrayBuffer();
+          const videoBuffer = new Uint8Array(videoArrayBuffer);
+
+          const fileName = `scene-${sceneTitle?.replace(/[^a-z0-9]/gi, '-').toLowerCase() || Date.now()}-${Date.now()}.mp4`;
+
+          const { error: uploadError } = await supabase.storage
+            .from('animation-videos')
+            .upload(fileName, videoBuffer, {
+              contentType: 'video/mp4',
+              cacheControl: '3600',
+              upsert: false
+            });
+
+          if (uploadError) {
+            console.error('Erreur upload Storage:', uploadError);
+            return;
+          }
+
+          const { data: { publicUrl } } = supabase.storage
+            .from('animation-videos')
+            .getPublicUrl(fileName);
+
+          console.log('Vidéo uploadée avec succès:', publicUrl);
+
+          // Mettre à jour la DB avec l'URL de la vidéo
+          const { data: project } = await supabase
+            .from('video_projects')
+            .select('images_data')
+            .eq('id', projectId)
+            .single();
+
+          if (project?.images_data) {
+            const imagesData = typeof project.images_data === 'string'
+              ? JSON.parse(project.images_data)
+              : project.images_data;
+
+            const updatedImages = Array.isArray(imagesData)
+              ? imagesData.map((img: any) => 
+                  img.sceneNumber === sceneNumber 
+                    ? { ...img, videoUrl: publicUrl }
+                    : img
+                )
+              : imagesData;
+
+            await supabase
+              .from('video_projects')
+              .update({ images_data: JSON.stringify(updatedImages) })
+              .eq('id', projectId);
+          }
+
+          return;
+        } else if (statusData.status === 'FAILED') {
+          console.error('La génération vidéo a échoué');
+          return;
         }
-
-        // Obtenir l'URL publique
-        const { data: { publicUrl } } = supabase.storage
-          .from('animation-videos')
-          .getPublicUrl(filePath);
-
-        console.log('Vidéo uploadée avec succès:', publicUrl);
-
-        return new Response(
-          JSON.stringify({ videoUrl: publicUrl }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      } else if (statusData.status === 'FAILED') {
-        throw new Error('La génération vidéo a échoué');
+        
+        attempts++;
       }
       
-      attempts++;
-    }
-    
-    throw new Error('Timeout: La génération a pris trop de temps');
+      console.error('Timeout: La génération a pris trop de temps');
+    };
+
+    // Démarrer la tâche en arrière-plan sans EdgeRuntime
+    backgroundTask().catch(err => console.error('Erreur background task:', err));
+
+    // Retourner immédiatement
+    return new Response(
+      JSON.stringify({ 
+        status: 'processing',
+        message: 'Génération de la vidéo en cours. Vérifiez dans quelques instants.'
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
 
   } catch (error) {
     console.error('Erreur dans generate-video:', error);
