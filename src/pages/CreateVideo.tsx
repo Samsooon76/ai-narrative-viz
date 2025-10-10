@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Wand2, Volume2, Image, Check, Edit2, Loader2, RefreshCw, Download } from "lucide-react";
+import { Wand2, Volume2, Image, Check, Edit2, Loader2, RefreshCw, Download, Video } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useAuth } from "@/lib/auth";
 import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
@@ -30,6 +30,7 @@ interface GeneratedImage {
   sceneNumber: number;
   imageUrl: string;
   prompt: string;
+  videoUrl?: string;
 }
 
 const CreateVideo = () => {
@@ -56,6 +57,7 @@ const CreateVideo = () => {
   const [selectedImages, setSelectedImages] = useState<Record<number, string>>({});
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [projectId, setProjectId] = useState<string | null>(null);
+  const [generatingVideoScenes, setGeneratingVideoScenes] = useState<Set<number>>(new Set());
 
   // Load existing project if project ID is in URL
   useEffect(() => {
@@ -449,6 +451,90 @@ const CreateVideo = () => {
     }
   };
 
+  const generateVideo = async (sceneNumber: number) => {
+    const scene = scriptData?.scenes.find(s => s.scene_number === sceneNumber);
+    const generatedImage = generatedImages.find(img => img.sceneNumber === sceneNumber);
+    
+    if (!scene || !generatedImage) {
+      toast({
+        title: "Erreur",
+        description: "Image non trouvée pour cette scène",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setGeneratingVideoScenes(prev => new Set(prev).add(sceneNumber));
+
+    try {
+      console.log(`Génération vidéo pour scène ${sceneNumber}...`);
+
+      const { data, error } = await supabase.functions.invoke('generate-video', {
+        body: {
+          imageUrl: generatedImage.imageUrl,
+          prompt: scene.narration,
+          sceneTitle: scene.title,
+        }
+      });
+
+      if (error) throw error;
+
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      // Update the generatedImages with video URL
+      setGeneratedImages(prev => 
+        prev.map(img => 
+          img.sceneNumber === sceneNumber 
+            ? { ...img, videoUrl: data.videoUrl }
+            : img
+        )
+      );
+
+      // Save to database
+      if (projectId) {
+        const updatedImages = generatedImages.map(img => 
+          img.sceneNumber === sceneNumber 
+            ? { sceneNumber: img.sceneNumber, imageUrl: img.imageUrl, prompt: img.prompt, videoUrl: data.videoUrl }
+            : { sceneNumber: img.sceneNumber, imageUrl: img.imageUrl, prompt: img.prompt, ...(img.videoUrl && { videoUrl: img.videoUrl }) }
+        );
+        
+        const { error: updateError } = await supabase
+          .from('video_projects')
+          .update({ 
+            images_data: updatedImages as any
+          })
+          .eq('id', projectId);
+
+        if (updateError) {
+          console.error('Erreur sauvegarde vidéo:', updateError);
+        }
+      }
+
+      toast({
+        title: "Vidéo générée !",
+        description: `La vidéo pour la scène ${sceneNumber} a été générée avec succès`,
+      });
+
+      console.log(`Vidéo générée pour scène ${sceneNumber}`);
+
+    } catch (error: any) {
+      console.error('Erreur génération vidéo:', error);
+      toast({
+        title: "Erreur de génération",
+        description: error.message || "Impossible de générer la vidéo",
+        variant: "destructive",
+      });
+    } finally {
+      setGeneratingVideoScenes(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(sceneNumber);
+        return newSet;
+      });
+    }
+  };
+
   const downloadAllImages = async () => {
     if (generatedImages.length === 0) {
       toast({
@@ -802,18 +888,53 @@ const CreateVideo = () => {
                               </Button>
                             </div>
 
+                            {generatedImage && (
+                              <Button
+                                onClick={() => generateVideo(scene.scene_number)}
+                                disabled={generatingVideoScenes.has(scene.scene_number)}
+                                size="sm"
+                                className="w-full bg-gradient-to-r from-primary to-accent hover:opacity-90"
+                              >
+                                {generatingVideoScenes.has(scene.scene_number) ? (
+                                  <>
+                                    <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                    Génération...
+                                  </>
+                                ) : generatedImage.videoUrl ? (
+                                  <>
+                                    <Video className="h-3 w-3 mr-1" />
+                                    ✓ Vidéo
+                                  </>
+                                ) : (
+                                  <>
+                                    <Video className="h-3 w-3 mr-1" />
+                                    Générer vidéo
+                                  </>
+                                )}
+                              </Button>
+                            )}
+
                              {generatedImage ? (
                               <div className="relative group">
-                                <img 
-                                  src={generatedImage.imageUrl} 
-                                  alt={`Scène ${scene.scene_number}`}
-                                  className="w-full aspect-[9/16] object-cover rounded-lg border-2 border-border/40"
-                                  onError={(e) => {
-                                    e.currentTarget.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="100" height="100" fill="%23333"/><text x="50%" y="50%" text-anchor="middle" fill="%23999" font-size="12">Erreur</text></svg>';
-                                  }}
-                                />
+                                {generatedImage.videoUrl ? (
+                                  <video 
+                                    src={generatedImage.videoUrl} 
+                                    className="w-full aspect-[9/16] object-cover rounded-lg border-2 border-border/40"
+                                    controls
+                                    loop
+                                  />
+                                ) : (
+                                  <img 
+                                    src={generatedImage.imageUrl} 
+                                    alt={`Scène ${scene.scene_number}`}
+                                    className="w-full aspect-[9/16] object-cover rounded-lg border-2 border-border/40"
+                                    onError={(e) => {
+                                      e.currentTarget.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="100" height="100" fill="%23333"/><text x="50%" y="50%" text-anchor="middle" fill="%23999" font-size="12">Erreur</text></svg>';
+                                    }}
+                                  />
+                                )}
                                 <div className="absolute top-2 right-2 bg-primary text-primary-foreground px-2 py-1 rounded-md text-xs font-medium">
-                                  ✓ Générée
+                                  ✓ {generatedImage.videoUrl ? 'Vidéo' : 'Image'}
                                 </div>
                               </div>
                             ) : (
