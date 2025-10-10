@@ -27,10 +27,10 @@ serve(async (req) => {
     }
 
     console.log('Génération vidéo avec fal.ai pour:', sceneTitle);
-    console.log('Image URL:', imageUrl.substring(0, 100));
+    console.log('Image URL type:', imageUrl.substring(0, 50));
 
-    // Appeler l'API fal.ai avec le modèle Ovi
-    const response = await fetch('https://fal.run/fal-ai/ovi/video', {
+    // Appeler l'API fal.ai avec le modèle Ovi (endpoint corrigé)
+    const response = await fetch('https://queue.fal.run/fal-ai/ovi', {
       method: 'POST',
       headers: {
         'Authorization': `Key ${FAL_KEY}`,
