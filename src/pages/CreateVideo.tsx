@@ -70,15 +70,16 @@ const CreateVideo = () => {
   const loadProject = async (id: string) => {
     setIsLoadingProject(true);
     try {
+      // Charger d'abord les métadonnées sans les images
       const { data, error } = await supabase
         .from('video_projects')
-        .select('*')
+        .select('id, title, prompt, script, status, created_at, updated_at')
         .eq('id', id)
         .single();
 
       if (error) throw error;
 
-      // Restore project data
+      // Restore project data rapide
       setProjectId(data.id);
       setProjectName(data.title);
       setTopic(data.prompt || "");
@@ -89,9 +90,42 @@ const CreateVideo = () => {
           : data.script;
         setScriptData(parsedScript);
         setEditedScriptJson(JSON.stringify(parsedScript, null, 2));
+        setCurrentStep('script');
       }
 
-      if (data.images_data) {
+      // Fin du chargement rapide
+      setIsLoadingProject(false);
+
+      toast({
+        title: "Projet chargé",
+        description: `Projet "${data.title}" ouvert avec succès`
+      });
+
+      // Charger les images en arrière-plan après
+      loadProjectImages(id);
+
+    } catch (error: any) {
+      console.error('Erreur chargement projet:', error);
+      toast({
+        title: "Erreur",
+        description: error.message || "Impossible de charger le projet",
+        variant: "destructive"
+      });
+      setIsLoadingProject(false);
+    }
+  };
+
+  const loadProjectImages = async (id: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('video_projects')
+        .select('images_data')
+        .eq('id', id)
+        .single();
+
+      if (error) throw error;
+
+      if (data?.images_data) {
         const imagesData = typeof data.images_data === 'string'
           ? JSON.parse(data.images_data)
           : data.images_data;
@@ -116,30 +150,10 @@ const CreateVideo = () => {
           setGeneratedImages(imagesArray);
           setSelectedImages(imagesData as Record<number, string>);
           setCurrentStep('images');
-        } else if (data.script) {
-          setCurrentStep('script');
-        } else {
-          setCurrentStep('topic');
         }
-      } else if (data.script) {
-        setCurrentStep('script');
-      } else {
-        setCurrentStep('topic');
       }
-
-      toast({
-        title: "Projet chargé",
-        description: `Projet "${data.title}" ouvert avec succès`
-      });
-    } catch (error: any) {
-      console.error('Erreur chargement projet:', error);
-      toast({
-        title: "Erreur",
-        description: error.message || "Impossible de charger le projet",
-        variant: "destructive"
-      });
-    } finally {
-      setIsLoadingProject(false);
+    } catch (error) {
+      console.error('Erreur chargement images:', error);
     }
   };
 
