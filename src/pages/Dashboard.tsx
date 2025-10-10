@@ -30,13 +30,21 @@ const Dashboard = () => {
 
   const loadProjects = async () => {
     try {
-      // Ne sélectionner que les colonnes essentielles, SANS images_data
+      console.log('Chargement des projets...');
+      
+      // Requête simple et rapide sans images_data
       const { data, error } = await supabase
         .from('video_projects')
         .select('id, title, description, status, created_at')
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(50); // Limiter à 50 projets
 
-      if (error) throw error;
+      console.log('Projets chargés:', data?.length || 0);
+
+      if (error) {
+        console.error('Erreur Supabase:', error);
+        throw error;
+      }
       
       // Ajouter un compteur vide pour l'affichage
       const projectsData = (data || []).map(project => ({
@@ -45,15 +53,25 @@ const Dashboard = () => {
       }));
       
       setProjects(projectsData);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erreur chargement projets:', error);
+      
+      // Afficher un message plus spécifique
+      const errorMessage = error.message?.includes('timeout') 
+        ? 'La connexion a pris trop de temps. Réessayez dans quelques instants.'
+        : 'Impossible de charger les projets';
+        
       toast({
         title: "Erreur",
-        description: "Impossible de charger les projets",
+        description: errorMessage,
         variant: "destructive"
       });
+      
+      // Ne pas bloquer l'interface
+      setProjects([]);
     } finally {
       setLoadingProjects(false);
+      console.log('Chargement terminé');
     }
   };
 
