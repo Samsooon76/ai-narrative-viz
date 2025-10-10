@@ -27,7 +27,51 @@ serve(async (req) => {
     }
 
     console.log('Génération vidéo avec fal.ai pour:', sceneTitle);
-    console.log('Image URL type:', imageUrl.substring(0, 50));
+
+    // Si l'image est en base64, l'uploader d'abord vers Storage
+    let finalImageUrl = imageUrl;
+    
+    if (imageUrl.startsWith('data:image')) {
+      console.log('Image en base64 détectée, upload vers Storage...');
+      
+      const supabase = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      );
+
+      // Extraire les données de l'image base64
+      const base64Data = imageUrl.split(',')[1];
+      const imageBuffer = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+
+      // Créer un nom de fichier unique
+      const fileName = `scene-${sceneTitle?.replace(/[^a-z0-9]/gi, '-').toLowerCase() || Date.now()}-${Date.now()}.png`;
+      
+      // Upload vers le bucket
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('generated-images')
+        .upload(fileName, imageBuffer, {
+          contentType: 'image/png',
+          cacheControl: '3600',
+          upsert: true
+        });
+
+      if (uploadError) {
+        console.error('Erreur upload base64 vers Storage:', uploadError);
+        throw new Error(`Erreur upload image: ${uploadError.message}`);
+      }
+
+      // Obtenir l'URL publique
+      const { data: { publicUrl } } = supabase.storage
+        .from('generated-images')
+        .getPublicUrl(fileName);
+
+      finalImageUrl = publicUrl;
+      console.log('Image uploadée vers Storage:', publicUrl);
+    } else {
+      console.log('Image URL publique fournie:', imageUrl.substring(0, 100));
+    }
+
+    console.log('Appel API fal.ai...');
 
     // Appeler l'API fal.ai avec le modèle Ovi (endpoint corrigé)
     const response = await fetch('https://queue.fal.run/fal-ai/ovi', {
@@ -37,7 +81,7 @@ serve(async (req) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        image_url: imageUrl,
+        image_url: finalImageUrl,
         prompt: prompt,
         duration: 4, // 4 secondes
       }),
