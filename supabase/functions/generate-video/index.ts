@@ -21,12 +21,12 @@ serve(async (req) => {
       );
     }
 
-    const FAL_KEY = Deno.env.get('FAL_KEY');
-    if (!FAL_KEY) {
-      throw new Error('FAL_KEY non configurée');
+    const HF_TOKEN = Deno.env.get('HUGGING_FACE_API_KEY');
+    if (!HF_TOKEN) {
+      throw new Error('HUGGING_FACE_API_KEY non configurée');
     }
 
-    console.log('Génération vidéo avec fal.ai pour:', sceneTitle);
+    console.log('Génération vidéo avec HuggingFace pour:', sceneTitle);
 
     // Si l'image est en base64, l'uploader d'abord vers Storage
     let finalImageUrl = imageUrl;
@@ -71,13 +71,13 @@ serve(async (req) => {
       console.log('Image URL publique fournie:', imageUrl.substring(0, 100));
     }
 
-    console.log('Appel API fal.ai via queue...');
+    console.log('Appel API HuggingFace via router...');
 
-    // Soumettre à la queue fal.ai
-    const queueResponse = await fetch('https://queue.fal.run/fal-ai/ovi/image-to-video', {
+    // Appeler HuggingFace router pour fal-ai/ovi
+    const hfResponse = await fetch('https://router.huggingface.co/fal-ai/fal-ai/ovi/image-to-video?_subdomain=queue', {
       method: 'POST',
       headers: {
-        'Authorization': `Key ${FAL_KEY}`,
+        'Authorization': `Bearer ${HF_TOKEN}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -86,133 +86,84 @@ serve(async (req) => {
       }),
     });
 
-
-    if (!queueResponse.ok) {
-      const errorText = await queueResponse.text();
-      console.error('Erreur queue fal.ai:', queueResponse.status, errorText);
+    if (!hfResponse.ok) {
+      const errorText = await hfResponse.text();
+      console.error('Erreur HuggingFace:', hfResponse.status, errorText);
       
-      if (queueResponse.status === 429) {
+      if (hfResponse.status === 429) {
         return new Response(
           JSON.stringify({ error: 'Limite de requêtes atteinte. Réessayez dans quelques instants.' }),
           { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
       
-      if (queueResponse.status === 402 || queueResponse.status === 403 || queueResponse.status === 401) {
+      if (hfResponse.status === 402 || hfResponse.status === 403 || hfResponse.status === 401) {
         return new Response(
-          JSON.stringify({ error: 'Erreur d\'authentification ou crédits épuisés. Vérifiez votre clé API fal.ai.' }),
+          JSON.stringify({ error: 'Erreur d\'authentification HuggingFace. Vérifiez votre clé API.' }),
           { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
       
-      throw new Error(`Erreur queue fal.ai: ${queueResponse.status} - ${errorText}`);
+      throw new Error(`Erreur HuggingFace: ${hfResponse.status} - ${errorText}`);
     }
 
-    const queueData = await queueResponse.json();
-    console.log('Request soumis à la queue:', queueData);
+    const hfData = await hfResponse.json();
+    console.log('Réponse HuggingFace:', JSON.stringify(hfData).substring(0, 200));
 
-    // Attendre que la requête soit terminée (polling)
-    const requestId = queueData.request_id;
-    let attempts = 0;
-    const maxAttempts = 60; // 5 minutes max (5s * 60)
+    // Extraire l'URL de la vidéo générée
+    const videoUrl = hfData.video?.url || hfData.url;
     
-    console.log('Polling request_id:', requestId);
-    
-    while (attempts < maxAttempts) {
-      await new Promise(resolve => setTimeout(resolve, 5000)); // Attendre 5 secondes
-      
-      const statusResponse = await fetch(`https://queue.fal.run/fal-ai/ovi/image-to-video/requests/${requestId}/status`, {
-        headers: {
-          'Authorization': `Key ${FAL_KEY}`,
-        },
+    if (!videoUrl) {
+      console.error('Pas d\'URL vidéo dans la réponse:', hfData);
+      throw new Error('Pas d\'URL vidéo retournée par HuggingFace');
+    }
+
+    console.log('Vidéo générée, téléchargement depuis:', videoUrl.substring(0, 100));
+
+    // Télécharger la vidéo
+    const videoResponse = await fetch(videoUrl);
+    if (!videoResponse.ok) {
+      throw new Error(`Impossible de télécharger la vidéo: ${videoResponse.status}`);
+    }
+
+    const videoArrayBuffer = await videoResponse.arrayBuffer();
+    const videoBuffer = new Uint8Array(videoArrayBuffer);
+
+    console.log('Vidéo téléchargée, taille:', videoBuffer.length, 'bytes. Upload vers Storage...');
+
+    // Upload vers Supabase Storage
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+
+    const fileName = `scene-${sceneTitle?.replace(/[^a-z0-9]/gi, '-').toLowerCase() || Date.now()}-${Date.now()}.mp4`;
+    const filePath = `${fileName}`;
+
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from('animation-videos')
+      .upload(filePath, videoBuffer, {
+        contentType: 'video/mp4',
+        cacheControl: '3600',
+        upsert: false
       });
 
-      if (!statusResponse.ok) {
-        console.error('Erreur status polling:', statusResponse.status);
-        attempts++;
-        continue;
-      }
-
-      const statusData = await statusResponse.json();
-      console.log('Status:', statusData.status);
-
-      if (statusData.status === 'COMPLETED') {
-        // Récupérer le résultat
-        const resultResponse = await fetch(`https://queue.fal.run/fal-ai/ovi/image-to-video/requests/${requestId}`, {
-          headers: {
-            'Authorization': `Key ${FAL_KEY}`,
-          },
-        });
-
-        if (!resultResponse.ok) {
-          throw new Error('Impossible de récupérer le résultat');
-        }
-
-        const data = await resultResponse.json();
-        console.log('Réponse fal.ai:', JSON.stringify(data).substring(0, 200));
-
-        // Extraire l'URL de la vidéo générée
-        const videoUrl = data.video?.url;
-        
-        if (!videoUrl) {
-          console.error('Pas d\'URL vidéo dans la réponse:', data);
-          throw new Error('Pas d\'URL vidéo retournée par fal.ai');
-        }
-
-        console.log('Vidéo générée, téléchargement depuis:', videoUrl.substring(0, 100));
-
-        // Télécharger la vidéo depuis fal.ai
-        const videoResponse = await fetch(videoUrl);
-        if (!videoResponse.ok) {
-          throw new Error(`Impossible de télécharger la vidéo: ${videoResponse.status}`);
-        }
-
-        const videoArrayBuffer = await videoResponse.arrayBuffer();
-        const videoBuffer = new Uint8Array(videoArrayBuffer);
-
-        console.log('Vidéo téléchargée, taille:', videoBuffer.length, 'bytes. Upload vers Storage...');
-
-        // Upload vers Supabase Storage
-        const supabase = createClient(
-          Deno.env.get('SUPABASE_URL') ?? '',
-          Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-        );
-
-        const fileName = `scene-${sceneTitle?.replace(/[^a-z0-9]/gi, '-').toLowerCase() || Date.now()}-${Date.now()}.mp4`;
-        const filePath = `${fileName}`;
-
-        const { data: uploadData, error: uploadError } = await supabase.storage
-          .from('animation-videos')
-          .upload(filePath, videoBuffer, {
-            contentType: 'video/mp4',
-            cacheControl: '3600',
-            upsert: false
-          });
-
-        if (uploadError) {
-          console.error('Erreur upload Storage:', uploadError);
-          throw new Error(`Erreur upload: ${uploadError.message}`);
-        }
-
-        // Obtenir l'URL publique
-        const { data: { publicUrl } } = supabase.storage
-          .from('animation-videos')
-          .getPublicUrl(filePath);
-
-        console.log('Vidéo uploadée avec succès:', publicUrl);
-
-        return new Response(
-          JSON.stringify({ videoUrl: publicUrl }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      } else if (statusData.status === 'FAILED') {
-        throw new Error('La génération vidéo a échoué');
-      }
-      
-      attempts++;
+    if (uploadError) {
+      console.error('Erreur upload Storage:', uploadError);
+      throw new Error(`Erreur upload: ${uploadError.message}`);
     }
-    
-    throw new Error('Timeout: La génération a pris trop de temps');
+
+    // Obtenir l'URL publique
+    const { data: { publicUrl } } = supabase.storage
+      .from('animation-videos')
+      .getPublicUrl(filePath);
+
+    console.log('Vidéo uploadée avec succès:', publicUrl);
+
+    return new Response(
+      JSON.stringify({ videoUrl: publicUrl }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
 
   } catch (error) {
     console.error('Erreur dans generate-video:', error);
