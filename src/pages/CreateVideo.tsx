@@ -63,16 +63,21 @@ const CreateVideo = () => {
   // Load existing project and restore step from localStorage
   useEffect(() => {
     const projectIdFromUrl = searchParams.get('project');
-    if (projectIdFromUrl && user) {
+    if (projectIdFromUrl && user && !projectId) {
+      // Ne charger qu'une seule fois
       loadProject(projectIdFromUrl);
-      
-      // Restore step from localStorage
-      const savedStep = localStorage.getItem(`project_${projectIdFromUrl}_step`);
+    }
+  }, [searchParams, user]);
+
+  // Restore step from localStorage when projectId is set
+  useEffect(() => {
+    if (projectId) {
+      const savedStep = localStorage.getItem(`project_${projectId}_step`);
       if (savedStep && ['topic', 'script', 'images', 'complete'].includes(savedStep)) {
         setCurrentStep(savedStep as Step);
       }
     }
-  }, [searchParams, user]);
+  }, [projectId]);
 
   // Save current step to localStorage whenever it changes
   useEffect(() => {
