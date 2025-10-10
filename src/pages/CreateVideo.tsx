@@ -60,13 +60,26 @@ const CreateVideo = () => {
   const [projectId, setProjectId] = useState<string | null>(null);
   const [generatingVideoScenes, setGeneratingVideoScenes] = useState<Set<number>>(new Set());
 
-  // Load existing project if project ID is in URL
+  // Load existing project and restore step from localStorage
   useEffect(() => {
     const projectIdFromUrl = searchParams.get('project');
     if (projectIdFromUrl && user) {
       loadProject(projectIdFromUrl);
+      
+      // Restore step from localStorage
+      const savedStep = localStorage.getItem(`project_${projectIdFromUrl}_step`);
+      if (savedStep && ['topic', 'script', 'images', 'complete'].includes(savedStep)) {
+        setCurrentStep(savedStep as Step);
+      }
     }
   }, [searchParams, user]);
+
+  // Save current step to localStorage whenever it changes
+  useEffect(() => {
+    if (projectId) {
+      localStorage.setItem(`project_${projectId}_step`, currentStep);
+    }
+  }, [currentStep, projectId]);
 
   const loadProject = async (id: string) => {
     setIsLoadingProject(true);
