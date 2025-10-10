@@ -14,6 +14,74 @@ export type Database = {
   }
   public: {
     Tables: {
+      animations: {
+        Row: {
+          created_at: string | null
+          duration_target_sec: number | null
+          error_code: string | null
+          error_message: string | null
+          id: string
+          image_index: number
+          loop: boolean | null
+          mj_message_id_grid: string | null
+          mj_message_id_upscale: string | null
+          mj_message_id_video: string | null
+          mode: string
+          motion_prompt: string | null
+          status: string
+          updated_at: string | null
+          user_id: string
+          video_project_id: string
+          video_url: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          duration_target_sec?: number | null
+          error_code?: string | null
+          error_message?: string | null
+          id?: string
+          image_index: number
+          loop?: boolean | null
+          mj_message_id_grid?: string | null
+          mj_message_id_upscale?: string | null
+          mj_message_id_video?: string | null
+          mode?: string
+          motion_prompt?: string | null
+          status?: string
+          updated_at?: string | null
+          user_id: string
+          video_project_id: string
+          video_url?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          duration_target_sec?: number | null
+          error_code?: string | null
+          error_message?: string | null
+          id?: string
+          image_index?: number
+          loop?: boolean | null
+          mj_message_id_grid?: string | null
+          mj_message_id_upscale?: string | null
+          mj_message_id_video?: string | null
+          mode?: string
+          motion_prompt?: string | null
+          status?: string
+          updated_at?: string | null
+          user_id?: string
+          video_project_id?: string
+          video_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "animations_video_project_id_fkey"
+            columns: ["video_project_id"]
+            isOneToOne: false
+            referencedRelation: "video_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null

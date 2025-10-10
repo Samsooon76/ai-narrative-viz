@@ -30,23 +30,21 @@ const Dashboard = () => {
 
   const loadProjects = async () => {
     try {
-      // Sélectionner uniquement les colonnes nécessaires, pas les images lourdes
+      // Ne sélectionner que les colonnes essentielles, SANS images_data
       const { data, error } = await supabase
         .from('video_projects')
-        .select('id, title, description, status, created_at, images_data')
+        .select('id, title, description, status, created_at')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
       
-      // Compter le nombre d'images sans charger les données base64
-      const projectsWithCount = (data || []).map(project => ({
+      // Ajouter un compteur vide pour l'affichage
+      const projectsData = (data || []).map(project => ({
         ...project,
-        images_data: Array.isArray(project.images_data) 
-          ? project.images_data.map(() => ({ sceneNumber: 1 })) 
-          : []
+        images_data: [] // Ne pas charger les images
       }));
       
-      setProjects(projectsWithCount);
+      setProjects(projectsData);
     } catch (error) {
       console.error('Erreur chargement projets:', error);
       toast({
@@ -163,12 +161,6 @@ const Dashboard = () => {
                       </p>
                     </div>
 
-                    {project.images_data && Array.isArray(project.images_data) && (
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <FileText className="h-4 w-4" />
-                        <span>{project.images_data.length} prompts générés</span>
-                      </div>
-                    )}
 
                     <div className="flex gap-2 pt-2">
                       <Link to={`/create?project=${project.id}`} className="flex-1">
