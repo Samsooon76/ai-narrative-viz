@@ -5,8 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Video, Mail, Lock, User } from "lucide-react";
-import { useAuth } from "@/lib/auth";
+import { Video, Mail, Lock, User, Loader2 } from "lucide-react";
+import { useAuth } from "@/lib/use-auth";
 import { toast } from "@/hooks/use-toast";
 import { Link } from "react-router-dom";
 import { z } from "zod";
@@ -14,10 +14,32 @@ import { z } from "zod";
 const emailSchema = z.string().email("Email invalide");
 const passwordSchema = z.string().min(6, "Le mot de passe doit contenir au moins 6 caractères");
 
+const GoogleIcon = () => (
+  <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+    <path
+      fill="#4285F4"
+      d="M23.5 12.27c0-.79-.07-1.37-.22-1.97H12v3.58h6.48c-.13 1.12-.83 2.8-2.38 3.93l-.02.15 3.46 2.63.24.02c2.24-2.07 3.72-5.11 3.72-8.34Z"
+    />
+    <path
+      fill="#34A853"
+      d="M12 24c3.24 0 5.96-1.07 7.95-2.92L16.35 18c-1 .7-2.35 1.19-4.35 1.19-3.32 0-6.14-2.23-7.15-5.33l-.15.01-3.59 2.77-.05.14C3.69 21.78 7.51 24 12 24Z"
+    />
+    <path
+      fill="#FBBC05"
+      d="M4.85 13.86A7.97 7.97 0 0 1 4.42 12c0-.65.11-1.28.22-1.86l-.01-.13L1 7.21l-.12.05A11.99 11.99 0 0 0 0 12c0 1.93.47 3.76 1.29 5.37z"
+    />
+    <path
+      fill="#EA4335"
+      d="M12 4.73c2.25 0 3.76.97 4.62 1.79l3.38-3.3C17.93 1.17 15.24 0 12 0 7.51 0 3.69 2.22 1.17 5.46l3.88 3.03C5.95 6.96 8.67 4.73 12 4.73Z"
+    />
+  </svg>
+);
+
 const Auth = () => {
   const navigate = useNavigate();
-  const { signIn, signUp, user } = useAuth();
+  const { signIn, signUp, signInWithGoogle, user } = useAuth();
   const [loading, setLoading] = useState(false);
+  const [oauthLoading, setOauthLoading] = useState(false);
 
   // Login state
   const [loginEmail, setLoginEmail] = useState("");
@@ -70,6 +92,15 @@ const Auth = () => {
       navigate("/dashboard");
     }
     setLoading(false);
+  };
+
+  const handleGoogleSignIn = async () => {
+    if (oauthLoading) return;
+    setOauthLoading(true);
+    const { error } = await signInWithGoogle();
+    if (error) {
+      setOauthLoading(false);
+    }
   };
 
   const handleSignup = async (e: React.FormEvent) => {
@@ -140,7 +171,34 @@ const Auth = () => {
         </Link>
 
         <Card className="p-8 border-border/40 bg-gradient-to-br from-card/60 to-card/40 backdrop-blur-sm">
-          <Tabs defaultValue="login" className="w-full">
+          <div className="space-y-6">
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full h-12 bg-background/40"
+              onClick={handleGoogleSignIn}
+              disabled={loading || oauthLoading}
+            >
+              {oauthLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Connexion en cours...
+                </>
+              ) : (
+                <>
+                  <GoogleIcon />
+                  Continuer avec Google
+                </>
+              )}
+            </Button>
+
+            <div className="flex items-center gap-3 text-xs uppercase tracking-wide text-muted-foreground">
+              <span className="h-px flex-1 bg-border/60" />
+              <span>ou</span>
+              <span className="h-px flex-1 bg-border/60" />
+            </div>
+
+            <Tabs defaultValue="login" className="w-full">
             <TabsList className="grid w-full grid-cols-2 mb-8">
               <TabsTrigger value="login">Connexion</TabsTrigger>
               <TabsTrigger value="signup">Inscription</TabsTrigger>
@@ -252,7 +310,8 @@ const Auth = () => {
                 </Button>
               </form>
             </TabsContent>
-          </Tabs>
+            </Tabs>
+          </div>
         </Card>
       </div>
     </div>

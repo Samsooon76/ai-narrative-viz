@@ -1,4 +1,4 @@
-project_id = "mshifqkekqueqdqztyqd"
+project_id = "flsjcsvklloigqyxiocq"
 
 [functions.generate-script]
 verify_jwt = true
@@ -8,4 +8,3 @@ verify_jwt = true
 
 [functions.generate-video]
 verify_jwt = true
-timeout = 360

@@ -1,50 +1,79 @@
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
-import { Video, LogOut } from "lucide-react";
-import { Link } from "react-router-dom";
-import { useAuth } from "@/lib/auth";
+import { Video, LogOut, Power } from "lucide-react";
+import { Link, NavLink } from "react-router-dom";
+import { useAuth } from "@/lib/use-auth";
+import { useMemo } from "react";
+
+const navLinkBase = "rounded-full px-4 py-2 text-base font-semibold transition-colors";
 
 export const Navbar = () => {
   const { user, signOut } = useAuth();
 
+  const links = useMemo(
+    () => [
+      { to: "/", label: "Accueil", requireAuth: false, hideWhenAuth: true },
+      { to: "/pricing", label: "Pricing", requireAuth: false, hideWhenAuth: true },
+      { to: "/process", label: "Comment ça marche", requireAuth: false, hideWhenAuth: true },
+      { to: "/dashboard", label: "Dashboard", requireAuth: true },
+      { to: "/create", label: "Studio", requireAuth: true },
+    ],
+    []
+  );
+
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 border-b border-border/40 bg-background/80 backdrop-blur-xl">
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex h-16 items-center justify-between">
-          <Link to="/" className="flex items-center gap-2 group">
-            <div className="rounded-lg bg-gradient-to-br from-primary to-accent p-2 transition-transform group-hover:scale-110">
-              <Video className="h-5 w-5 text-primary-foreground" />
+    <nav className="fixed inset-x-0 top-0 z-50" style={{ willChange: 'transform' }}>
+      <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8">
+        <div className="mt-3 flex h-14 items-center justify-between rounded-full border border-white/10 bg-white/5 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] backdrop-blur-md supports-[backdrop-filter]:bg-white/5 pl-2 md:pl-3" style={{ transform: 'translateZ(0)', backfaceVisibility: 'hidden' }}>
+          <Link to="/" className="flex items-center gap-2">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-primary shadow-sm">
+              <Video className="h-4 w-4" />
             </div>
-            <span className="text-xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-              VideoAI
-            </span>
+            <div className="flex flex-col">
+              <span className="text-base font-semibold tracking-tight">VideoAI Studio</span>
+            </div>
           </Link>
 
-          <div className="flex items-center gap-4">
+          <div className="hidden items-center gap-1 md:flex">
+            {links
+              .filter((item) => (!item.requireAuth || !!user) && !(item.hideWhenAuth && user))
+              .map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  className={({ isActive }) =>
+                    `${navLinkBase} ${isActive ? "text-white" : "text-muted-foreground hover:text-foreground"}`
+                  }
+                >
+                  {item.label}
+                </NavLink>
+              ))}
+          </div>
+
+          <div className="flex items-center gap-2 pr-2">
+            <ThemeToggle className="flex" compact />
             {user ? (
               <>
                 <Link to="/dashboard">
-                  <Button variant="ghost">Dashboard</Button>
-                </Link>
-                <Button 
-                  variant="outline" 
-                  onClick={signOut}
-                  className="flex items-center gap-2"
-                >
-                  <LogOut className="h-4 w-4" />
-                  Déconnexion
-                </Button>
-              </>
-            ) : (
-              <>
-                <Link to="/auth">
-                  <Button variant="outline">Connexion</Button>
-                </Link>
-                <Link to="/auth">
-                  <Button className="bg-gradient-to-r from-primary to-accent hover:opacity-90">
-                    Commencer
+                  <Button size="sm" variant="ghost" className="hidden sm:inline-flex rounded-full px-4 text-sm font-semibold text-white hover:bg-white/10">
+                    Mon espace
                   </Button>
                 </Link>
+                <button
+                  onClick={signOut}
+                  className="ml-1 inline-flex h-8 w-8 items-center justify-center rounded-full bg-red-500 text-white shadow hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500/50"
+                  aria-label="Déconnexion"
+                  title="Déconnexion"
+                >
+                  <Power className="h-4 w-4" />
+                </button>
               </>
+            ) : (
+              <Link to="/auth">
+                <Button size="sm" className="rounded-full px-5 text-sm font-semibold shadow-lg shadow-primary/25">
+                  Se connecter
+                </Button>
+              </Link>
             )}
           </div>
         </div>

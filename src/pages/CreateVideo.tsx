@@ -1,16 +1,146 @@
-import { Navbar } from "@/components/ui/navbar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Wand2, Volume2, Image, Check, Edit2, Loader2, RefreshCw, Download, Video } from "lucide-react";
-import { useState, useEffect } from "react";
-import { useAuth } from "@/lib/auth";
+import { Wand2, Check, Edit2, Loader2, Volume2, RefreshCw, Play } from "lucide-react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useAuth } from "@/lib/use-auth";
 import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
-import { VideoTimeline } from "@/components/VideoTimeline";
+import { VideoTimeline, type TimelinePlaybackController } from "@/components/VideoTimeline";
+import { cn } from "@/lib/utils";
+import PageShell from "@/components/layout/PageShell";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+const DEFAULT_STYLE_ID = 'nano-banana';
+
+const DEFAULT_IMAGE_STYLE_PROMPT =
+  'High-end animated short film look, cinematic lighting, believable proportions, ready for motion.';
+
+const IMAGE_STYLE_PROMPTS: Record<string, string> = {
+  'arcane': 'Arcane-inspired realistic comic style, painterly shading, expressive lighting, detailed characters, atmospheric depth, dynamic brush strokes.',
+  'desaturated-toon': 'Muted 2D toon look, long shadows, poetic mist, gentle color grading, minimalist backgrounds, elegant silhouettes.',
+  'digital-noir': 'Angular neo-noir comics, flat shading, hard-edged shapes, monochrome teal-green palette, dramatic chiaroscuro.',
+  'bold-graphic': 'Bold graphic novel, thick silhouettes, poster-like compositions, high contrast red and black palette, strong negative space.',
+  'muted-adventure': 'Soft cinematic adventure, wide-lens depth, limited earthy palette, atmospheric haze, subtle storytelling details.',
+  'whimsical-cartoon': 'Playful surreal cartoon, exaggerated proportions, energetic curves, candy colors, lively expressions.',
+  'late-night-action': 'Nocturnal action animation, backlit silhouettes, sharp highlights, high tension, precise anatomy, moody city glow.',
+  [DEFAULT_STYLE_ID]: 'Nano Banana stylized anime realism, saturated neon palette, hyper-detailed character design, motion-friendly silhouette, dynamic lighting.',
+};
+
+const STYLE_OPTIONS = [
+  { value: 'none', label: 'Sans contrainte (IA libre)' },
+  { value: 'arcane', label: 'Arcane - peinture dramatique' },
+  { value: 'desaturated-toon', label: 'Desaturated Toon - ambiance feutrée' },
+  { value: 'digital-noir', label: 'Digital Noir - contraste marqué' },
+  { value: 'bold-graphic', label: 'Bold Graphic - silhouettes fortes' },
+  { value: 'muted-adventure', label: 'Muted Adventure - aventure cinématique' },
+  { value: 'whimsical-cartoon', label: 'Whimsical Cartoon - cartoon coloré' },
+  { value: 'late-night-action', label: 'Late Night Action - action nocturne' },
+  { value: DEFAULT_STYLE_ID, label: 'Nano Banana - animé néon détaillé' },
+];
+
+const resolveStyleId = (visualStyle: string | null | undefined) =>
+  visualStyle && visualStyle !== 'none' ? visualStyle : DEFAULT_STYLE_ID;
+
+const resolveStylePrompt = (styleId: string | null | undefined) =>
+  IMAGE_STYLE_PROMPTS[styleId ?? DEFAULT_STYLE_ID] ?? DEFAULT_IMAGE_STYLE_PROMPT;
+
+const extractFunctionErrorMessage = (error: unknown, fallback: string) => {
+  if (!error) return fallback;
+
+  if (typeof error === 'object' && error !== null && 'context' in error) {
+    const context = (error as { context?: { body?: unknown } }).context;
+    const body = context?.body;
+    if (typeof body === 'string') {
+      try {
+        const parsed = JSON.parse(body);
+        if (parsed?.error && typeof parsed.error === 'string') {
+          return parsed.error;
+        }
+      } catch (_) {
+        return body;
+      }
+    }
+    if (typeof body === 'object' && body !== null && 'error' in body) {
+      const message = (body as { error?: unknown }).error;
+      if (typeof message === 'string') return message;
+    }
+  }
+
+  if (error instanceof Error) return error.message || fallback;
+
+  if (typeof error === 'object' && error !== null && 'message' in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === 'string') return message;
+  }
+
+  return fallback;
+};
+
+const FAL_PROMPT_MAX_LENGTH = 2000;
+
+const sanitizeFalPrompt = (rawPrompt: string | null | undefined, fallbackPrompt?: string | null | undefined) => {
+  const sourcePrompt = [rawPrompt, fallbackPrompt].find(
+    (value): value is string => typeof value === 'string' && value.trim().length > 0,
+  ) ?? '';
+
+  const collapsed = sourcePrompt.replace(/\s+/g, ' ').trim();
+  if (collapsed.length <= FAL_PROMPT_MAX_LENGTH) {
+    return collapsed;
+  }
+
+  return collapsed.slice(0, FAL_PROMPT_MAX_LENGTH);
+};
+
+type SceneVoiceRecord = {
+  voiceId: string;
+  audioBase64: string;
+  duration: number;
+};
+
+type VoiceClip = {
+  id: string;
+  label: string;
+  start: number;
+  duration: number;
+  accentClassName?: string;
+};
+
+const FORCED_VOICES: { voice_id: string; name: string; language: string; preview_url?: string | null }[] = [
+  { voice_id: "aQROLel5sQbj1vuIVi6B", name: "Élénore", language: "Français" },
+  { voice_id: "a5n9pJUnAhX4fn7lx3uo", name: "Marc", language: "Français" },
+];
+
+const blobToBase64 = async (blob: Blob): Promise<string> => {
+  const arrayBuffer = await blob.arrayBuffer();
+  let binary = "";
+  const bytes = new Uint8Array(arrayBuffer);
+  bytes.forEach((byte) => {
+    binary += String.fromCharCode(byte);
+  });
+  return btoa(binary);
+};
+
+const base64ToBlob = (base64: string, contentType = "audio/mpeg"): Blob => {
+  const cleaned = base64.includes(",") ? base64.split(",").pop() ?? "" : base64;
+  const byteCharacters = atob(cleaned);
+  const byteNumbers = new Array(byteCharacters.length);
+  for (let i = 0; i < byteCharacters.length; i += 1) {
+    byteNumbers[i] = byteCharacters.charCodeAt(i);
+  }
+  const byteArray = new Uint8Array(byteNumbers);
+  return new Blob([byteArray], { type: contentType });
+};
 
 type Step = 'topic' | 'script' | 'images' | 'complete';
 
@@ -19,6 +149,8 @@ interface ScriptScene {
   title: string;
   visual: string;
   narration: string;
+  speech?: string;
+  audio_description?: string;
 }
 
 interface ScriptData {
@@ -31,8 +163,21 @@ interface GeneratedImage {
   sceneNumber: number;
   imageUrl: string;
   prompt: string;
+  styleId?: string;
+  stylePrompt?: string;
   videoUrl?: string;
+  videoPrompt?: string;
+  success?: boolean;
 }
+
+type SceneStatus = 'loading' | 'ready' | 'generating-video' | 'error' | 'empty';
+
+const STUDIO_STEPS: { id: Step; label: string; description: string }[] = [
+  { id: 'topic', label: 'Brief', description: 'Sujet et style visuel' },
+  { id: 'script', label: 'Script', description: 'Narration par scène' },
+  { id: 'images', label: 'Storyboard', description: 'Visuels & montage' },
+  { id: 'complete', label: 'Export', description: 'Rendering final' },
+];
 
 const CreateVideo = () => {
   const { user, loading } = useAuth();
@@ -53,43 +198,626 @@ const CreateVideo = () => {
   const [isEditingScript, setIsEditingScript] = useState(false);
   
   // Step 3: Images
-  const [currentSceneIndex, setCurrentSceneIndex] = useState(0);
   const [generatedImages, setGeneratedImages] = useState<GeneratedImage[]>([]);
-  const [selectedImages, setSelectedImages] = useState<Record<number, string>>({});
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [projectId, setProjectId] = useState<string | null>(null);
   const [generatingVideoScenes, setGeneratingVideoScenes] = useState<Set<number>>(new Set());
+  const [sceneStyleOverrides, setSceneStyleOverrides] = useState<Record<number, string>>({});
+  const [voiceOptions, setVoiceOptions] = useState<
+    { voice_id: string; name: string; preview_url?: string | null; language?: string | null }[]
+  >([]);
+  const [voicesLoading, setVoicesLoading] = useState(false);
+  const [voicesError, setVoicesError] = useState<string | null>(null);
+  const [selectedVoiceId, setSelectedVoiceId] = useState<string | null>(null);
+  const [sceneVoiceStatus, setSceneVoiceStatus] = useState<Record<number, 'idle' | 'loading' | 'success' | 'error'>>({});
+  const [sceneAudioUrls, setSceneAudioUrls] = useState<Record<number, string>>({});
+  const [sceneAudioDurations, setSceneAudioDurations] = useState<Record<number, number>>({});
+  const [sceneVoiceData, setSceneVoiceData] = useState<Record<number, SceneVoiceRecord>>({});
+  const videoNegativePrompt = "jitter, bad hands, blur, distortion";
+  const videoSeed = "";
+  const timelinePreviewRef = useRef<HTMLVideoElement | null>(null);
+  const timelinePlaybackControllerRef = useRef<TimelinePlaybackController | null>(null);
+  const [activeTimelineScene, setActiveTimelineScene] = useState<number | null>(null);
 
-  // Load existing project and restore step from localStorage
-  useEffect(() => {
-    const projectIdFromUrl = searchParams.get('project');
-    if (projectIdFromUrl && user && !projectId) {
-      // Ne charger qu'une seule fois
-      loadProject(projectIdFromUrl);
+  const sceneCount = useMemo(() => scriptData?.scenes?.length ?? 0, [scriptData]);
+  const filmTitle = useMemo(() => projectName || scriptData?.title || topic || 'the film', [projectName, scriptData?.title, topic]);
+
+  const DEFAULT_TIMELINE_LENGTH = 60;
+
+  const estimatedSceneDuration = useMemo(() => {
+    if (!sceneCount) {
+      return DEFAULT_TIMELINE_LENGTH;
     }
-  }, [searchParams, user]);
 
-  // Restore step from localStorage when projectId is set
-  useEffect(() => {
-    if (projectId) {
-      const savedStep = localStorage.getItem(`project_${projectId}_step`);
-      if (savedStep && ['topic', 'script', 'images', 'complete'].includes(savedStep)) {
-        setCurrentStep(savedStep as Step);
+    const rawDuration = DEFAULT_TIMELINE_LENGTH / sceneCount;
+    return Math.max(Math.round(rawDuration * 10) / 10, 4);
+  }, [sceneCount]);
+
+  const timelineDuration = useMemo(() => {
+    if (!sceneCount) {
+      return DEFAULT_TIMELINE_LENGTH;
+    }
+    return estimatedSceneDuration * sceneCount;
+  }, [sceneCount, estimatedSceneDuration]);
+
+  const voiceAudioClips = useMemo(() => {
+    if (!scriptData || !scriptData.scenes.length) return [] as VoiceClip[];
+
+    const clips: VoiceClip[] = [];
+    scriptData.scenes.forEach((scene, index) => {
+      if (!sceneAudioUrls[scene.scene_number]) return;
+      const duration = sceneAudioDurations[scene.scene_number] ?? estimatedSceneDuration;
+      const start = index * estimatedSceneDuration;
+      const voiceRecord = sceneVoiceData[scene.scene_number];
+      const voiceName = voiceRecord
+        ? voiceOptions.find((voice) => voice.voice_id === voiceRecord.voiceId)?.name
+        : null;
+
+      clips.push({
+        id: `voice-${scene.scene_number}`,
+        label: voiceName ? `${voiceName} – Scène ${scene.scene_number}` : `Voix scène ${scene.scene_number}`,
+        start,
+        duration,
+        accentClassName:
+          "border-emerald-400/40 bg-gradient-to-r from-emerald-400/30 via-emerald-400/15 to-emerald-400/10 text-emerald-400",
+      });
+    });
+    return clips;
+  }, [scriptData, sceneAudioUrls, sceneAudioDurations, estimatedSceneDuration, sceneVoiceData, voiceOptions]);
+
+
+  const selectedVoice = useMemo(() => {
+    if (!selectedVoiceId) return null;
+    return voiceOptions.find((voice) => voice.voice_id === selectedVoiceId) ?? null;
+  }, [selectedVoiceId, voiceOptions]);
+
+  const handlePlaybackControllerChange = useCallback((controller: TimelinePlaybackController | null) => {
+    timelinePlaybackControllerRef.current = controller;
+  }, [estimatedSceneDuration, selectedVoiceId]);
+
+  const persistVoiceData = useCallback(async (voiceData: Record<number, SceneVoiceRecord>) => {
+    if (!projectId) return;
+    try {
+      const { error } = await supabase
+        .from('video_projects')
+        .update({ voice_data: voiceData })
+        .eq('id', projectId);
+      if (error) {
+        console.error('Erreur sauvegarde voix:', error);
       }
+    } catch (error) {
+      console.error('Erreur inattendue sauvegarde voix:', error);
     }
   }, [projectId]);
 
-  // Save current step to localStorage whenever it changes
-  useEffect(() => {
-    if (projectId) {
-      localStorage.setItem(`project_${projectId}_step`, currentStep);
+  const loadVoices = useCallback(async () => {
+    const apiKey = import.meta.env.VITE_ELEVENLABS_API_KEY;
+    if (!apiKey) {
+      setVoicesError("Configurez la clé ElevenLabs (VITE_ELEVENLABS_API_KEY) pour activer la génération vocale.");
+      setVoiceOptions([]);
+      setSelectedVoiceId(null);
+      return;
     }
-  }, [currentStep, projectId]);
 
-  const loadProject = async (id: string) => {
+    setVoicesLoading(true);
+    setVoicesError(null);
+
+    try {
+      const response = await fetch("https://api.elevenlabs.io/v1/voices", {
+        headers: {
+          "xi-api-key": apiKey,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Erreur ElevenLabs ${response.status}`);
+      }
+
+      const data = await response.json();
+      const voices = Array.isArray(data?.voices) ? data.voices : [];
+      const simplifiedVoices = voices
+        .map(
+          (voice: {
+            voice_id?: string;
+            name?: string;
+            preview_url?: string | null;
+            labels?: Record<string, string | null | undefined> | null;
+          }) => ({
+            voice_id: voice.voice_id ?? "",
+            name: voice.name ?? "Voix sans nom",
+            preview_url: voice.preview_url ?? null,
+            language:
+              typeof voice.labels?.language === "string"
+                ? voice.labels.language
+                : typeof voice.labels?.accent === "string"
+                  ? voice.labels.accent
+                  : null,
+          })
+        )
+        .filter((voice) => Boolean(voice.voice_id));
+
+      const mergedVoices = new Map<string, { voice_id: string; name: string; preview_url?: string | null; language?: string | null }>();
+      simplifiedVoices.forEach((voice) => {
+        mergedVoices.set(voice.voice_id, voice);
+      });
+
+      FORCED_VOICES.forEach((forced) => {
+        const existing = mergedVoices.get(forced.voice_id);
+        mergedVoices.set(forced.voice_id, {
+          voice_id: forced.voice_id,
+          name: existing?.name ?? forced.name,
+          preview_url: existing?.preview_url ?? forced.preview_url ?? null,
+          language: forced.language,
+        });
+      });
+
+      const mergedList = Array.from(mergedVoices.values());
+
+      const languageScore = (voice: { language?: string | null }) => {
+        const lang = voice.language?.toLowerCase() ?? "";
+        if (lang.includes("fr")) return 0;
+        if (lang.includes("english") || lang.includes("en")) return 1;
+        return 2;
+      };
+
+      mergedList.sort((a, b) => {
+        const scoreDiff = languageScore(a) - languageScore(b);
+        if (scoreDiff !== 0) return scoreDiff;
+        return a.name.localeCompare(b.name);
+      });
+
+      setVoiceOptions(mergedList);
+      setSelectedVoiceId((current) => current ?? mergedList[0]?.voice_id ?? null);
+    } catch (error) {
+      console.error("Erreur de récupération des voix ElevenLabs:", error);
+      setVoicesError(extractFunctionErrorMessage(error, "Impossible de charger les voix ElevenLabs"));
+    } finally {
+      setVoicesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (currentStep !== "script") return;
+    if (voiceOptions.length > 0 || voicesLoading) return;
+    void loadVoices();
+  }, [currentStep, voiceOptions.length, voicesLoading, loadVoices]);
+
+  const clearSceneVoiceData = useCallback(
+    (sceneNumber: number) => {
+      setSceneVoiceStatus((prev) => ({ ...prev, [sceneNumber]: 'idle' }));
+      setSceneAudioUrls((prev) => {
+        const next = { ...prev };
+        const existing = next[sceneNumber];
+        if (existing) {
+          URL.revokeObjectURL(existing);
+          delete next[sceneNumber];
+        }
+        return next;
+      });
+      setSceneAudioDurations((prev) => {
+        if (!(sceneNumber in prev)) return prev;
+        const next = { ...prev };
+        delete next[sceneNumber];
+        return next;
+      });
+      setSceneVoiceData((prev) => {
+        if (!(sceneNumber in prev)) return prev;
+        const next = { ...prev };
+        delete next[sceneNumber];
+        void persistVoiceData(next);
+        return next;
+      });
+    },
+    [persistVoiceData]
+  );
+
+  useEffect(() => {
+    if (!scriptData) {
+      Object.values(sceneAudioUrls).forEach((url) => URL.revokeObjectURL(url));
+      setSceneAudioUrls({});
+      setSceneVoiceStatus({});
+      setSceneAudioDurations({});
+      setSceneVoiceData({});
+      void persistVoiceData({});
+      return;
+    }
+
+    const validSceneNumbers = new Set(scriptData.scenes.map((scene) => scene.scene_number));
+
+    setSceneVoiceStatus((prev) => {
+      const next: Record<number, "idle" | "loading" | "success" | "error"> = {};
+      scriptData.scenes.forEach((scene) => {
+        next[scene.scene_number] = prev[scene.scene_number] ?? "idle";
+      });
+      return next;
+    });
+
+    setSceneAudioUrls((prev) => {
+      const next: Record<number, string> = {};
+      Object.entries(prev).forEach(([sceneNumberStr, url]) => {
+        const sceneNumber = Number(sceneNumberStr);
+        if (validSceneNumbers.has(sceneNumber)) {
+          next[sceneNumber] = url;
+        } else {
+          URL.revokeObjectURL(url);
+        }
+      });
+      return next;
+    });
+    setSceneAudioDurations((prev) => {
+      const next: Record<number, number> = {};
+      scriptData.scenes.forEach((scene) => {
+        if (prev[scene.scene_number] != null) {
+          next[scene.scene_number] = prev[scene.scene_number];
+        }
+      });
+      return next;
+    });
+    const trimmedVoiceData: Record<number, SceneVoiceRecord> = {};
+    scriptData.scenes.forEach((scene) => {
+      const record = sceneVoiceDataRef.current[scene.scene_number];
+      if (record) {
+        trimmedVoiceData[scene.scene_number] = record;
+      }
+    });
+
+    const currentVoiceData = sceneVoiceDataRef.current;
+    let voiceDataChanged = Object.keys(currentVoiceData).length !== Object.keys(trimmedVoiceData).length;
+    if (!voiceDataChanged) {
+      for (const [sceneNumberStr, record] of Object.entries(trimmedVoiceData)) {
+        const sceneNumber = Number(sceneNumberStr);
+        const current = currentVoiceData[sceneNumber];
+        if (!current || current.audioBase64 !== record.audioBase64 || current.voiceId !== record.voiceId || current.duration !== record.duration) {
+          voiceDataChanged = true;
+          break;
+        }
+      }
+    }
+
+    if (voiceDataChanged) {
+      setSceneVoiceData(trimmedVoiceData);
+      void persistVoiceData(trimmedVoiceData);
+    }
+  }, [scriptData, persistVoiceData]);
+
+  const audioUrlsRef = useRef<Record<number, string>>({});
+  const sceneVoiceDataRef = useRef<Record<number, SceneVoiceRecord>>({});
+
+  useEffect(() => {
+    audioUrlsRef.current = sceneAudioUrls;
+  }, [sceneAudioUrls]);
+
+  useEffect(() => {
+    sceneVoiceDataRef.current = sceneVoiceData;
+  }, [sceneVoiceData]);
+
+  useEffect(() => {
+    return () => {
+      Object.values(audioUrlsRef.current).forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, []);
+
+  const generateVoiceForScene = useCallback(
+    async (scene: ScriptScene) => {
+      const apiKey = import.meta.env.VITE_ELEVENLABS_API_KEY;
+      if (!apiKey) {
+        toast({
+          title: "Configuration manquante",
+          description: "Ajoutez la clé ElevenLabs (VITE_ELEVENLABS_API_KEY) pour générer la voix.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (!selectedVoiceId) {
+        toast({
+          title: "Sélectionnez une voix",
+          description: "Choisissez une voix ElevenLabs avant de lancer la génération.",
+        });
+        return;
+      }
+
+      const narrationText = scene.narration?.trim();
+      if (!narrationText) {
+        toast({
+          title: "Narration vide",
+          description: "Aucun texte de narration n'est disponible pour cette scène.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      setSceneVoiceStatus((prev) => ({ ...prev, [scene.scene_number]: "loading" }));
+
+      try {
+        const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${selectedVoiceId}`, {
+          method: "POST",
+          headers: {
+            "xi-api-key": apiKey,
+            "Content-Type": "application/json",
+            Accept: "audio/mpeg",
+          },
+          body: JSON.stringify({
+            text: narrationText,
+            model_id: "eleven_flash_v2_5",
+            voice_settings: {
+              stability: 0.3,
+              similarity_boost: 0.75,
+            },
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`Erreur ElevenLabs ${response.status}`);
+        }
+
+        const audioBlob = await response.blob();
+        const base64Audio = await blobToBase64(audioBlob);
+        const objectUrl = URL.createObjectURL(audioBlob);
+
+        setSceneAudioUrls((prev) => {
+          const next = { ...prev };
+          const previousUrl = prev[scene.scene_number];
+          if (previousUrl) {
+            URL.revokeObjectURL(previousUrl);
+          }
+          next[scene.scene_number] = objectUrl;
+          return next;
+        });
+
+        const audioElement = new Audio();
+
+        const finalizeVoice = (rawDuration: number) => {
+          const duration = Number.isFinite(rawDuration) && rawDuration > 0 ? rawDuration : estimatedSceneDuration;
+          setSceneAudioDurations((prev) => ({ ...prev, [scene.scene_number]: duration }));
+          setSceneVoiceData((prev) => {
+            const next = {
+              ...prev,
+              [scene.scene_number]: {
+                voiceId: selectedVoiceId,
+                audioBase64: base64Audio,
+                duration,
+              },
+            };
+            void persistVoiceData(next);
+            return next;
+          });
+          setSceneVoiceStatus((prev) => ({ ...prev, [scene.scene_number]: "success" }));
+        };
+
+        const cleanupAudioElement = () => {
+          audioElement.removeEventListener("loadedmetadata", handleLoadedMetadata);
+          audioElement.removeEventListener("error", handleError);
+          audioElement.src = "";
+        };
+
+        const handleLoadedMetadata = () => {
+          finalizeVoice(audioElement.duration);
+          cleanupAudioElement();
+        };
+
+        const handleError = () => {
+          finalizeVoice(estimatedSceneDuration);
+          cleanupAudioElement();
+        };
+
+        audioElement.addEventListener("loadedmetadata", handleLoadedMetadata);
+        audioElement.addEventListener("error", handleError);
+        audioElement.src = objectUrl;
+        audioElement.load();
+
+        toast({
+          title: "Voix générée",
+          description: `Scène ${scene.scene_number} convertie avec la voix ${selectedVoice?.name ?? selectedVoiceId}.`,
+        });
+      } catch (error) {
+        console.error("Erreur génération voix ElevenLabs:", error);
+        setSceneVoiceStatus((prev) => ({ ...prev, [scene.scene_number]: "error" }));
+        toast({
+          title: "Erreur ElevenLabs",
+          description: extractFunctionErrorMessage(error, "Impossible de générer la voix pour cette scène."),
+          variant: "destructive",
+        });
+      }
+    },
+    [selectedVoiceId, selectedVoice, toast, estimatedSceneDuration, persistVoiceData],
+  );
+
+  useEffect(() => {
+    if (currentStep !== 'images') {
+      timelinePlaybackControllerRef.current?.pause();
+      const video = timelinePreviewRef.current;
+      if (video) {
+        video.pause();
+      }
+      return;
+    }
+
+    const handleKeydown = (event: KeyboardEvent) => {
+      if (event.code !== "Space") return;
+
+      const target = event.target as HTMLElement | null;
+      if (target) {
+        const tagName = target.tagName;
+        if (tagName === "INPUT" || tagName === "TEXTAREA" || target.isContentEditable) {
+          return;
+        }
+      }
+
+      event.preventDefault();
+      console.log('[CreateVideo] Space key pressed');
+
+      const controller = timelinePlaybackControllerRef.current;
+      if (controller) {
+        console.log('[CreateVideo] Using playback controller, isPlaying:', controller.isPlaying());
+        controller.toggle();
+        return;
+      }
+
+      console.log('[CreateVideo] No controller, using video ref directly');
+      const video = timelinePreviewRef.current;
+      if (!video) {
+        console.log('[CreateVideo] No video ref found');
+        return;
+      }
+
+      if (video.paused) {
+        console.log('[CreateVideo] Video paused, playing');
+        void video.play().catch(() => {
+          // user interaction required for autoplay - ignore failures
+        });
+      } else {
+        console.log('[CreateVideo] Video playing, pausing');
+        video.pause();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeydown);
+    return () => {
+      window.removeEventListener("keydown", handleKeydown);
+    };
+  }, [currentStep]);
+
+  const buildImagePrompt = useCallback((scene: ScriptScene, stylePrompt: string) => {
+    const continuityInstruction = `This is sequential scene ${scene.scene_number} of the animated short "${filmTitle}". Maintain consistent character design, wardrobe, color palette, lighting mood, era and world-building with the previous scenes unless the brief explicitly demands a change.`;
+
+    return [
+      `Style goal: ${stylePrompt}`,
+      continuityInstruction,
+      `Scene brief (auto-translate into fluent cinematic English, enrich with camera motion, lighting and atmosphere details): ${scene.visual}`,
+      'Avoid any text, captions, signage, UI elements, or typography unless the scene brief explicitly mandates readable wording.',
+      'Avoid frames, letterboxing, watermarks, or decorative borders so the artwork fills the frame cleanly.',
+      'Design a single 9:16 portrait illustration that works as a keyframe for animation and keeps the same main characters throughout the story.'
+    ].join("\n");
+  }, [filmTitle]);
+
+  const loadProjectImages = useCallback(async (id: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('video_projects')
+        .select('images_data, voice_data')
+        .eq('id', id)
+        .single();
+
+      if (error) throw error;
+
+      if (data?.voice_data) {
+        const rawVoiceData = typeof data.voice_data === 'string'
+          ? JSON.parse(data.voice_data)
+          : data.voice_data;
+
+        if (rawVoiceData && typeof rawVoiceData === 'object') {
+          const restoredUrls: Record<number, string> = {};
+          const restoredDurations: Record<number, number> = {};
+          const restoredVoiceData: Record<number, SceneVoiceRecord> = {};
+          const restoredStatus: Record<number, 'idle' | 'loading' | 'success' | 'error'> = {};
+
+          Object.entries(rawVoiceData as Record<string, SceneVoiceRecord | { audioBase64?: string; voiceId?: string; duration?: number }>)
+            .forEach(([sceneNumberStr, value]) => {
+              const sceneNumber = Number(sceneNumberStr);
+              if (!Number.isInteger(sceneNumber)) return;
+              const record = value as Partial<SceneVoiceRecord> & { audioBase64?: string };
+              if (!record?.audioBase64) return;
+
+              try {
+                const blob = base64ToBlob(record.audioBase64);
+                const objectUrl = URL.createObjectURL(blob);
+                restoredUrls[sceneNumber] = objectUrl;
+                restoredDurations[sceneNumber] =
+                  typeof record.duration === 'number' && record.duration > 0 ? record.duration : estimatedSceneDuration;
+                restoredVoiceData[sceneNumber] = {
+                  voiceId: record.voiceId ?? selectedVoiceId ?? "",
+                  audioBase64: record.audioBase64,
+                  duration: restoredDurations[sceneNumber],
+                };
+                restoredStatus[sceneNumber] = 'success';
+              } catch (voiceError) {
+                console.error('Erreur restauration audio scène', sceneNumber, voiceError);
+              }
+            });
+
+          if (Object.keys(restoredUrls).length > 0) {
+            setSceneAudioUrls((prev) => {
+              Object.values(prev).forEach((url) => URL.revokeObjectURL(url));
+              return restoredUrls;
+            });
+            setSceneAudioDurations(restoredDurations);
+            setSceneVoiceData(restoredVoiceData);
+            setSceneVoiceStatus((prev) => ({ ...prev, ...restoredStatus }));
+            if (!selectedVoiceId) {
+              const firstRecord = Object.values(restoredVoiceData)[0];
+              if (firstRecord?.voiceId) {
+                setSelectedVoiceId(firstRecord.voiceId);
+              }
+            }
+          }
+        }
+      }
+
+      if (!data?.images_data) return;
+
+      const rawImages = typeof data.images_data === 'string'
+        ? JSON.parse(data.images_data)
+        : data.images_data;
+
+      if (Array.isArray(rawImages) && rawImages.length > 0) {
+        const normalizedImages = rawImages.map((img: GeneratedImage) => {
+          const inferredStyleId = img.styleId ?? DEFAULT_STYLE_ID;
+          return {
+            ...img,
+            styleId: inferredStyleId,
+            stylePrompt: img.stylePrompt ?? resolveStylePrompt(inferredStyleId),
+          };
+        });
+
+        setGeneratedImages(normalizedImages);
+
+        const restoredStyles: Record<number, string> = {};
+        normalizedImages.forEach((img) => {
+          if (typeof img.sceneNumber === 'number') {
+            restoredStyles[img.sceneNumber] = img.styleId ?? DEFAULT_STYLE_ID;
+          }
+        });
+
+        if (Object.keys(restoredStyles).length > 0) {
+          setSceneStyleOverrides((prev) => ({
+            ...prev,
+            ...restoredStyles,
+          }));
+        }
+
+        setCurrentStep('images');
+        return;
+      }
+
+      if (rawImages && typeof rawImages === 'object') {
+        const imagesArray: GeneratedImage[] = Object.entries(rawImages).map(([sceneNumber, imageUrl]) => ({
+          sceneNumber: Number.parseInt(sceneNumber, 10),
+          imageUrl: imageUrl as string,
+          prompt: '',
+          styleId: DEFAULT_STYLE_ID,
+          stylePrompt: resolveStylePrompt(DEFAULT_STYLE_ID),
+        }));
+
+        setGeneratedImages(imagesArray);
+        const styleMap: Record<number, string> = {};
+        imagesArray.forEach((img) => {
+          styleMap[img.sceneNumber] = img.styleId ?? DEFAULT_STYLE_ID;
+        });
+        setSceneStyleOverrides((prev) => ({
+          ...prev,
+          ...styleMap,
+        }));
+        setCurrentStep('images');
+      }
+    } catch (error) {
+      console.error('Erreur chargement images:', error);
+    }
+  }, []);
+
+  const loadProject = useCallback(async (id: string) => {
     setIsLoadingProject(true);
     try {
-      // Charger d'abord les métadonnées sans les images
       const { data, error } = await supabase
         .from('video_projects')
         .select('id, title, prompt, script, status, created_at, updated_at')
@@ -98,21 +826,20 @@ const CreateVideo = () => {
 
       if (error) throw error;
 
-      // Restore project data rapide
       setProjectId(data.id);
       setProjectName(data.title);
       setTopic(data.prompt || "");
-      
+
       if (data.script) {
-        const parsedScript = typeof data.script === 'string' 
-          ? JSON.parse(data.script) 
+        const parsedScript = typeof data.script === 'string'
+          ? JSON.parse(data.script)
           : data.script;
+
         setScriptData(parsedScript);
         setEditedScriptJson(JSON.stringify(parsedScript, null, 2));
         setCurrentStep('script');
       }
 
-      // Fin du chargement rapide
       setIsLoadingProject(false);
 
       toast({
@@ -120,77 +847,62 @@ const CreateVideo = () => {
         description: `Projet "${data.title}" ouvert avec succès`
       });
 
-      // Charger les images en arrière-plan après
       loadProjectImages(id);
-
-    } catch (error: any) {
+    } catch (error) {
       console.error('Erreur chargement projet:', error);
+      const message = error instanceof Error ? error.message : 'Impossible de charger le projet';
       toast({
         title: "Erreur",
-        description: error.message || "Impossible de charger le projet",
+        description: message,
         variant: "destructive"
       });
       setIsLoadingProject(false);
     }
-  };
+  }, [loadProjectImages]);
 
-  const loadProjectImages = async (id: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('video_projects')
-        .select('images_data')
-        .eq('id', id)
-        .single();
-
-      if (error) throw error;
-
-      if (data?.images_data) {
-        const imagesData = typeof data.images_data === 'string'
-          ? JSON.parse(data.images_data)
-          : data.images_data;
-        
-        // Handle both object and array formats
-        if (Array.isArray(imagesData) && imagesData.length > 0) {
-          setGeneratedImages(imagesData);
-          // Create selectedImages from array
-          const selected: Record<number, string> = {};
-          imagesData.forEach((img: GeneratedImage) => {
-            selected[img.sceneNumber] = img.imageUrl;
-          });
-          setSelectedImages(selected);
-          setCurrentStep('images');
-        } else if (typeof imagesData === 'object' && imagesData !== null && Object.keys(imagesData).length > 0) {
-          // Convert object to GeneratedImage array
-          const imagesArray: GeneratedImage[] = Object.entries(imagesData).map(([sceneNumber, imageUrl]) => ({
-            sceneNumber: parseInt(sceneNumber),
-            imageUrl: imageUrl as string,
-            prompt: ''
-          }));
-          setGeneratedImages(imagesArray);
-          setSelectedImages(imagesData as Record<number, string>);
-          setCurrentStep('images');
-        }
-      }
-    } catch (error) {
-      console.error('Erreur chargement images:', error);
+  useEffect(() => {
+    const projectIdFromUrl = searchParams.get('project');
+    if (projectIdFromUrl && user && !projectId) {
+      loadProject(projectIdFromUrl);
     }
-  };
+  }, [searchParams, user, projectId, loadProject]);
 
-  if (loading || isLoadingProject) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-muted-foreground">Chargement...</p>
-        </div>
-      </div>
-    );
-  }
+  useEffect(() => {
+    if (!projectId) return;
+    const savedStep = localStorage.getItem(`project_${projectId}_step`);
+    if (savedStep && ['topic', 'script', 'images', 'complete'].includes(savedStep)) {
+      setCurrentStep(savedStep as Step);
+    }
+  }, [projectId]);
 
-  if (!user) {
-    return <Navigate to="/auth" replace />;
-  }
+  useEffect(() => {
+    if (!scriptData) return;
 
+    setSceneStyleOverrides((prev) => {
+      const updated = { ...prev };
+      scriptData.scenes.forEach((scene) => {
+        if (updated[scene.scene_number] === undefined) {
+          const existing = generatedImages.find((img) => img.sceneNumber === scene.scene_number);
+          updated[scene.scene_number] = existing?.styleId ?? visualStyle;
+        }
+      });
+      return updated;
+    });
+  }, [scriptData, generatedImages, visualStyle]);
+
+  const handleSceneStyleChange = useCallback((sceneNumber: number, styleId: string) => {
+    setSceneStyleOverrides((prev) => ({
+      ...prev,
+      [sceneNumber]: styleId,
+    }));
+  }, []);
+
+  // Save current step to localStorage whenever it changes
+  useEffect(() => {
+    if (projectId) {
+      localStorage.setItem(`project_${projectId}_step`, currentStep);
+    }
+  }, [currentStep, projectId]);
   const generateScript = async () => {
     if (!topic.trim() || !projectName.trim()) {
       toast({
@@ -207,17 +919,10 @@ const CreateVideo = () => {
         body: { topic, type: 'script', visualStyle }
       });
 
-      console.log('Response data:', data);
-      console.log('Response error:', error);
-
       if (error) throw error;
       if (!data || !data.script) {
-        console.error('Data structure:', data);
         throw new Error('Aucun script reçu');
       }
-
-      console.log('Script data:', data.script);
-      console.log('Script scenes:', data.script.scenes);
 
       setScriptData(data.script);
       setEditedScriptJson(JSON.stringify(data.script, null, 2));
@@ -227,11 +932,12 @@ const CreateVideo = () => {
         title: "Script généré !",
         description: "Vous pouvez maintenant le réviser avant de continuer"
       });
-    } catch (error: any) {
+    } catch (error) {
       console.error('Erreur génération script:', error);
+      const message = extractFunctionErrorMessage(error, "Impossible de générer le script");
       toast({
         title: "Erreur",
-        description: error.message || "Impossible de générer le script",
+        description: message,
         variant: "destructive"
       });
     } finally {
@@ -285,11 +991,12 @@ const CreateVideo = () => {
         title: "Script approuvé !",
         description: "Passons à la génération des images"
       });
-    } catch (error: any) {
+    } catch (error) {
       console.error('Erreur approbation script:', error);
+      const message = extractFunctionErrorMessage(error, "Erreur lors de l'approbation");
       toast({
         title: "Erreur",
-        description: error.message || "Erreur lors de l'approbation",
+        description: message,
         variant: "destructive"
       });
     }
@@ -300,31 +1007,24 @@ const CreateVideo = () => {
     
     setIsGeneratingImage(true);
     
-    const styleMap: Record<string, string> = {
-      'desaturated-toon': 'desaturated 2D toon style, long shadows, subtle mist, poetic pacing --niji 6 --ar 16:9',
-      'digital-noir': 'sharp-angled neo-minimalist cartoon style, flat shading, hard-edged shadows, geometric features, dark cinematic lighting, monochrome green palette --v 7',
-      'bold-graphic': 'bold graphic minimalism, sharp-edged shadows, red-black color scheme, stylized comic atmosphere --v 7 --style raw --ar 16:9',
-      'muted-adventure': 'muted desaturated animation style, limited palette, poetic vibe, wide landscape composition --v 7 --ar 16:9',
-      'whimsical-cartoon': 'cracked-egg whimsical cartoon style, weird shapes, joyful chaos --niji 6 --ar 16:9',
-      'late-night-action': 'late-night toonline action style, backlight silhouette, minimal dialogue energy --v 7 --ar 16:9'
-    };
-
-    const stylePrompt = visualStyle && visualStyle !== 'none'
-      ? styleMap[visualStyle] || 'Cinematic, dramatic lighting, high quality, professional video production.'
-      : 'Cinematic, dramatic lighting, high quality, professional video production.';
-
     const allGeneratedImages: GeneratedImage[] = [];
 
     try {
       // Generate all images in parallel
       const imagePromises = scriptData.scenes.map(async (scene) => {
-        const prompt = `Create a 9:16 vertical portrait image for: ${scene.visual}. Style: ${stylePrompt}`;
+        const overrideStyle = sceneStyleOverrides[scene.scene_number];
+        const selectedStyleId = overrideStyle ?? visualStyle;
+        const styleId = resolveStyleId(selectedStyleId);
+        const stylePrompt = resolveStylePrompt(styleId);
+        const prompt = buildImagePrompt(scene, stylePrompt);
         
         try {
           const { data, error } = await supabase.functions.invoke('generate-image', {
             body: { 
               prompt,
-              sceneTitle: scene.title 
+              sceneTitle: scene.title,
+              styleId,
+              stylePrompt
             }
           });
 
@@ -337,7 +1037,9 @@ const CreateVideo = () => {
             sceneNumber: scene.scene_number,
             imageUrl: data.imageUrl,
             prompt,
-            success: true
+            styleId: (data as { styleId?: string })?.styleId ?? styleId,
+            stylePrompt: (data as { stylePrompt?: string })?.stylePrompt ?? stylePrompt,
+            success: true,
           };
 
           // Save to database immediately
@@ -351,9 +1053,9 @@ const CreateVideo = () => {
 
           // Update UI in real-time
           setGeneratedImages([...allGeneratedImages]);
-          setSelectedImages(prev => ({
+          setSceneStyleOverrides((prev) => ({
             ...prev,
-            [scene.scene_number]: data.imageUrl
+            [scene.scene_number]: selectedStyleId,
           }));
 
           toast({
@@ -362,11 +1064,11 @@ const CreateVideo = () => {
           });
 
           return newImage;
-        } catch (error: any) {
+        } catch (error) {
           console.error(`Erreur scène ${scene.scene_number}:`, error);
           toast({
             title: `Erreur scène ${scene.scene_number}`,
-            description: error.message || "Impossible de générer cette image",
+            description: extractFunctionErrorMessage(error, "Impossible de générer cette image"),
             variant: "destructive"
           });
           return {
@@ -386,11 +1088,11 @@ const CreateVideo = () => {
         title: "Génération terminée !",
         description: `${successfulImages.length}/${scriptData.scenes.length} images créées`
       });
-    } catch (error: any) {
+    } catch (error) {
       console.error('Erreur génération images:', error);
       toast({
         title: "Erreur",
-        description: error.message || "Impossible de générer les images",
+        description: extractFunctionErrorMessage(error, "Impossible de générer les images"),
         variant: "destructive"
       });
     } finally {
@@ -407,31 +1109,20 @@ const CreateVideo = () => {
     setIsGeneratingImage(true);
 
     try {
-      const styleMap: Record<string, string> = {
-        'desaturated-toon': 'desaturated 2D toon style, long shadows, subtle mist, poetic pacing --niji 6 --ar 16:9',
-        'digital-noir': 'sharp-angled neo-minimalist cartoon style, flat shading, hard-edged shadows, geometric features, dark cinematic lighting, monochrome green palette --v 7',
-        'bold-graphic': 'bold graphic minimalism, sharp-edged shadows, red-black color scheme, stylized comic atmosphere --v 7 --style raw --ar 16:9',
-        'muted-adventure': 'muted desaturated animation style, limited palette, poetic vibe, wide landscape composition --v 7 --ar 16:9',
-        'whimsical-cartoon': 'cracked-egg whimsical cartoon style, weird shapes, joyful chaos --niji 6 --ar 16:9',
-        'late-night-action': 'late-night toonline action style, backlight silhouette, minimal dialogue energy --v 7 --ar 16:9'
-      };
-
-      const stylePrompt = visualStyle && visualStyle !== 'none'
-        ? styleMap[visualStyle] || 'Cinematic, dramatic lighting, high quality, professional video production.'
-        : 'Cinematic, dramatic lighting, high quality, professional video production.';
-      
-      const prompt = `Create a 9:16 vertical portrait image for: ${scene.visual}. Style: ${stylePrompt}`;
-
-      console.log(`Régénération de la scène ${sceneNumber}...`);
+      const overrideStyle = sceneStyleOverrides[sceneNumber];
+      const selectedStyleId = overrideStyle ?? visualStyle;
+      const styleId = resolveStyleId(selectedStyleId);
+      const stylePrompt = resolveStylePrompt(styleId);
+      const prompt = buildImagePrompt(scene, stylePrompt);
 
       const { data, error } = await supabase.functions.invoke('generate-image', {
         body: { 
           prompt,
-          sceneTitle: scene.title 
+          sceneTitle: scene.title,
+          styleId,
+          stylePrompt
         }
       });
-
-      console.log('Réponse de generate-image:', { data, error });
 
       if (error) {
         console.error('Erreur de l\'edge function:', error);
@@ -446,7 +1137,10 @@ const CreateVideo = () => {
       const newImage: GeneratedImage = {
         sceneNumber: scene.scene_number,
         imageUrl: data.imageUrl,
-        prompt
+        prompt,
+        styleId: (data as { styleId?: string })?.styleId ?? styleId,
+        stylePrompt: (data as { stylePrompt?: string })?.stylePrompt ?? stylePrompt,
+        success: true
       };
 
       // Update local state
@@ -455,9 +1149,9 @@ const CreateVideo = () => {
         : [...generatedImages, newImage];
 
       setGeneratedImages(updatedImages);
-      setSelectedImages(prev => ({
+      setSceneStyleOverrides((prev) => ({
         ...prev,
-        [sceneNumber]: data.imageUrl
+        [sceneNumber]: selectedStyleId,
       }));
 
       // Save to database
@@ -472,11 +1166,11 @@ const CreateVideo = () => {
         title: "Image régénérée !",
         description: `Nouvelle image pour la scène ${sceneNumber}`
       });
-    } catch (error: any) {
+    } catch (error) {
       console.error('Erreur régénération image:', error);
       toast({
         title: "Erreur",
-        description: error.message || "Impossible de régénérer l'image",
+        description: extractFunctionErrorMessage(error, "Impossible de régénérer l'image"),
         variant: "destructive"
       });
     } finally {
@@ -497,101 +1191,117 @@ const CreateVideo = () => {
       return;
     }
 
+    if (!projectId) {
+      toast({
+        title: "Projet introuvable",
+        description: "Impossible de générer la vidéo sans identifiant de projet.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setGeneratingVideoScenes(prev => new Set(prev).add(sceneNumber));
 
     try {
-      console.log(`Génération vidéo pour scène ${sceneNumber}...`);
 
-      const { data, error } = await supabase.functions.invoke('generate-video', {
-        body: {
-          imageUrl: generatedImage.imageUrl,
-          prompt: scene.narration,
-          sceneTitle: scene.title,
-          projectId: projectId,
-          sceneNumber: sceneNumber,
-        }
-      });
+      const fallbackStyleId = generatedImage.styleId ?? resolveStyleId(visualStyle);
+      const styleReference = `Visual style reference: ${generatedImage.stylePrompt ?? resolveStylePrompt(fallbackStyleId)}`;
+      const visualReference = generatedImage.prompt ? `Reference prompt: ${generatedImage.prompt}` : '';
 
-      if (error) throw error;
+      const promptParts = [
+        styleReference,
+        `Scene focus: ${scene.visual}`,
+        `Narration: ${scene.narration}`,
+        visualReference,
+        'Translate any non-English content into fluent English before synthesis.',
+      ].filter(Boolean);
 
-      if (data.error) {
-        throw new Error(data.error);
+      const finalPrompt = promptParts.join(' ').trim();
+      const sanitizedPrompt = sanitizeFalPrompt(finalPrompt, scene.narration);
+
+      if (!sanitizedPrompt) {
+        throw new Error("Le prompt généré pour la vidéo est vide. Vérifiez la scène avant de relancer.");
       }
 
-      toast({
-        title: "Génération démarrée",
-        description: "La vidéo sera prête dans 1-2 minutes.",
+      const updatedImagesForPrompt = generatedImages.map((img) =>
+        img.sceneNumber === sceneNumber
+          ? {
+              ...img,
+              videoPrompt: sanitizedPrompt,
+            }
+          : img
+      );
+
+      setGeneratedImages(updatedImagesForPrompt);
+
+      try {
+        await supabase
+          .from('video_projects')
+          .update({ images_data: JSON.stringify(updatedImagesForPrompt) })
+          .eq('id', projectId);
+      } catch (updateError) {
+        console.error('Erreur mise à jour vidéo en base:', updateError);
+      }
+
+      const seedValue = videoSeed.trim() !== '' ? Number.parseInt(videoSeed, 10) : undefined;
+      const numericSeed = typeof seedValue === 'number' && Number.isFinite(seedValue) ? seedValue : undefined;
+      const trimmedVideoNegative = videoNegativePrompt.trim();
+
+      const payload = Object.fromEntries(
+        Object.entries({
+          imageUrl: generatedImage.imageUrl,
+          prompt: sanitizedPrompt,
+          sceneTitle: scene.title,
+          projectId,
+          sceneNumber,
+          videoNegativePrompt: trimmedVideoNegative || undefined,
+          seed: numericSeed,
+          visualPrompt: generatedImage.prompt,
+          styleId: generatedImage.styleId ?? resolveStyleId(visualStyle),
+          stylePrompt: generatedImage.stylePrompt ?? resolveStylePrompt(visualStyle),
+        }).filter(([_, value]) => value !== undefined && value !== null)
+      );
+
+      const { data, error } = await supabase.functions.invoke('generate-video', {
+        body: payload
       });
 
-      // Polling pour vérifier si la vidéo est prête
-      const pollInterval = setInterval(async () => {
-        console.log(`Vérification vidéo pour scène ${sceneNumber}...`);
-        
-        const { data: project } = await supabase
-          .from('video_projects')
-          .select('images_data')
-          .eq('id', projectId)
-          .single();
+      if (error) {
+        throw error;
+      }
 
-        if (project?.images_data) {
-          const imagesData = typeof project.images_data === 'string'
-            ? JSON.parse(project.images_data)
-            : project.images_data;
+      if (data?.error) {
+        throw new Error(data.error as string);
+      }
 
-          console.log('Images data reçues:', imagesData);
+      const videoUrlFromResponse = (data as { videoUrl?: string })?.videoUrl;
 
-          const updatedImage = Array.isArray(imagesData)
-            ? imagesData.find((img: any) => img.sceneNumber === sceneNumber)
-            : null;
+      if (videoUrlFromResponse) {
+        setGeneratedImages(prev => 
+          prev.map(img =>
+            img.sceneNumber === sceneNumber
+              ? { ...img, videoUrl: videoUrlFromResponse }
+              : img
+          )
+        );
 
-          console.log('Image trouvée:', updatedImage);
-
-          if (updatedImage?.videoUrl) {
-            clearInterval(pollInterval);
-            
-            console.log('Vidéo trouvée!', updatedImage.videoUrl);
-            
-            // Update local state
-            setGeneratedImages(prev => 
-              prev.map(img => 
-                img.sceneNumber === sceneNumber 
-                  ? { ...img, videoUrl: updatedImage.videoUrl }
-                  : img
-              )
-            );
-
-            setGeneratingVideoScenes(prev => {
-              const newSet = new Set(prev);
-              newSet.delete(sceneNumber);
-              return newSet;
-            });
-
-            toast({
-              title: "Vidéo générée !",
-              description: `La vidéo pour la scène ${sceneNumber} est prête`,
-            });
-          }
-        }
-      }, 2000); // Vérifier toutes les 2 secondes
-
-      // Arrêter le polling après 5 minutes
-      setTimeout(() => {
-        clearInterval(pollInterval);
-        setGeneratingVideoScenes(prev => {
-          const newSet = new Set(prev);
-          newSet.delete(sceneNumber);
-          return newSet;
+        toast({
+          title: "Vidéo générée !",
+          description: `La vidéo pour la scène ${sceneNumber} est prête`,
         });
-        console.log(`Timeout polling pour scène ${sceneNumber}`);
-      }, 300000);
+      } else {
+        toast({
+          title: "Vidéo en cours",
+          description: "Le modèle a accepté la requête, la vidéo sera disponible sous peu.",
+        });
+      }
 
-      console.log(`Génération démarrée pour scène ${sceneNumber}`);
-
-    } catch (error: any) {
+    } catch (error) {
       console.error('Erreur génération vidéo:', error);
+
       toast({
         title: "Erreur de génération",
-        description: error.message || "Impossible de générer la vidéo",
+        description: extractFunctionErrorMessage(error, "Impossible de générer la vidéo"),
         variant: "destructive",
       });
     } finally {
@@ -603,7 +1313,36 @@ const CreateVideo = () => {
     }
   };
 
-  const downloadAllImages = async () => {
+  const resolveSceneLabel = (sceneNumber: number | undefined, index: number) =>
+    typeof sceneNumber === 'number' && Number.isFinite(sceneNumber)
+      ? sceneNumber
+      : index + 1;
+
+  const resolveExtension = (contentType: string | null, url: string, defaultExt: string) => {
+    if (contentType) {
+      const lowered = contentType.toLowerCase();
+      if (lowered.includes('png')) return 'png';
+      if (lowered.includes('jpeg') || lowered.includes('jpg')) return 'jpg';
+      if (lowered.includes('webp')) return 'webp';
+      if (lowered.includes('gif')) return 'gif';
+      if (lowered.includes('mp4')) return 'mp4';
+      if (lowered.includes('webm')) return 'webm';
+    }
+
+    try {
+      const pathname = new URL(url).pathname;
+      const match = pathname.match(/\.([a-z0-9]+)(?:$|\?)/i);
+      if (match?.[1]) {
+        return match[1].toLowerCase();
+      }
+    } catch {
+      // ignore malformed URLs
+    }
+
+    return defaultExt;
+  };
+
+  const downloadAllAssets = async () => {
     if (generatedImages.length === 0) {
       toast({
         title: "Aucune image",
@@ -617,11 +1356,30 @@ const CreateVideo = () => {
       const JSZip = (await import('jszip')).default;
       const zip = new JSZip();
 
-      // Download images from URLs and add to zip
-      for (const image of generatedImages) {
-        const response = await fetch(image.imageUrl);
-        const blob = await response.blob();
-        zip.file(`scene_${image.sceneNumber}.png`, blob);
+      let hasVideos = false;
+
+      for (const [index, image] of generatedImages.entries()) {
+        const sceneLabel = resolveSceneLabel(image.sceneNumber, index);
+        if (image.imageUrl) {
+          const response = await fetch(image.imageUrl);
+          if (!response.ok) {
+            throw new Error(`Image scène ${sceneLabel} indisponible (${response.status})`);
+          }
+          const blob = await response.blob();
+          const extension = resolveExtension(response.headers.get('content-type'), image.imageUrl, 'png');
+          zip.file(`image_${sceneLabel}.${extension}`, blob);
+        }
+
+        if (image.videoUrl) {
+          const response = await fetch(image.videoUrl);
+          if (!response.ok) {
+            throw new Error(`Vidéo scène ${sceneLabel} indisponible (${response.status})`);
+          }
+          const blob = await response.blob();
+          const extension = resolveExtension(response.headers.get('content-type'), image.videoUrl, 'mp4');
+          zip.file(`video_${sceneLabel}.${extension}`, blob);
+          hasVideos = true;
+        }
       }
 
       // Generate zip file
@@ -631,7 +1389,7 @@ const CreateVideo = () => {
       const url = URL.createObjectURL(content);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `${projectName || 'video'}_images.zip`;
+      link.download = `${projectName || 'video'}_${hasVideos ? 'assets' : 'images'}.zip`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -639,13 +1397,15 @@ const CreateVideo = () => {
 
       toast({
         title: "Téléchargement lancé !",
-        description: "Toutes les images sont en cours de téléchargement"
+        description: hasVideos
+          ? "Tous les assets (images & vidéos) sont en cours de téléchargement"
+          : "Toutes les images sont en cours de téléchargement"
       });
     } catch (error) {
       console.error('Erreur téléchargement:', error);
       toast({
         title: "Erreur",
-        description: "Impossible de télécharger les images",
+        description: "Impossible de télécharger les exports",
         variant: "destructive"
       });
     }
@@ -657,7 +1417,7 @@ const CreateVideo = () => {
         await supabase
           .from('video_projects')
           .update({ 
-            images_data: selectedImages,
+            images_data: JSON.stringify(generatedImages),
             status: 'completed'
           })
           .eq('id', projectId);
@@ -670,19 +1430,44 @@ const CreateVideo = () => {
       navigate('/dashboard');
     } catch (error) {
       console.error('Erreur finalisation:', error);
+      const message = extractFunctionErrorMessage(error, "Impossible de finaliser le projet");
       toast({
         title: "Erreur",
-        description: "Impossible de finaliser le projet",
+        description: message,
         variant: "destructive"
       });
     }
   };
 
+  const currentStepIndex = STUDIO_STEPS.findIndex(step => step.id === currentStep);
+  const scenesTotal = scriptData?.scenes.length ?? 0;
+  const storyboardComplete = scenesTotal > 0 && generatedImages.length === scenesTotal;
+  const displayStepIndex =
+    currentStep === 'images' && storyboardComplete
+      ? STUDIO_STEPS.findIndex(step => step.id === 'complete')
+      : currentStepIndex;
+  const normalizedStepIndex = displayStepIndex < 0 ? 0 : displayStepIndex;
+
+  if (loading || isLoadingProject) {
+    return (
+      <PageShell contentClassName="flex min-h-[60vh] items-center justify-center px-4">
+        <div className="text-center">
+          <div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+          <p className="text-muted-foreground">Chargement...</p>
+        </div>
+      </PageShell>
+    );
+  }
+
+  if (!user) {
+    return <Navigate to="/auth" replace />;
+  }
+
   const renderScriptPreview = () => {
     if (!scriptData) return null;
 
     return (
-      <div className="bg-background/50 p-6 rounded-lg border border-border/40 space-y-6">
+      <div className="space-y-6 rounded-2xl border border-white/10 bg-black/20 p-6 backdrop-blur-lg">
         <div>
           <h3 className="text-2xl font-bold mb-2">{scriptData.title}</h3>
           <p className="text-sm text-muted-foreground flex items-center gap-2">
@@ -691,25 +1476,137 @@ const CreateVideo = () => {
           </p>
         </div>
 
+        <div className="space-y-4 rounded-2xl border border-white/10 bg-black/30 p-4 backdrop-blur">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h4 className="text-lg font-semibold text-foreground">Choisissez une voix ElevenLabs</h4>
+              <p className="text-sm text-muted-foreground">
+                La narration générée ci-dessous sera envoyée à ElevenLabs avec la voix sélectionnée.
+              </p>
+            </div>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <Select
+                value={selectedVoiceId ?? undefined}
+                onValueChange={(value) => setSelectedVoiceId(value)}
+                disabled={voicesLoading || !voiceOptions.length}
+              >
+                <SelectTrigger className="w-64">
+                  <SelectValue placeholder={voicesLoading ? "Chargement des voix..." : "Sélectionner une voix"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {voiceOptions.map((voice) => (
+                    <SelectItem key={voice.voice_id} value={voice.voice_id}>
+                      <div className="flex flex-col">
+                        <span>{voice.name}</span>
+                        {voice.language && (
+                          <span className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground/80">
+                            {voice.language}
+                          </span>
+                        )}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                type="button"
+                variant="outline"
+                className="gap-2"
+                onClick={() => loadVoices()}
+                disabled={voicesLoading}
+              >
+                {voicesLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                Rafraîchir
+              </Button>
+            </div>
+          </div>
+          {voicesError && <p className="text-sm text-destructive">{voicesError}</p>}
+          {selectedVoice?.preview_url && (
+            <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-gradient-to-br from-primary/10 via-white/5 to-transparent p-4 backdrop-blur">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Aperçu de la voix</p>
+                <span className="text-xs text-muted-foreground/80">{selectedVoice.language ?? "Voix IA"}</span>
+              </div>
+              <div className="rounded-xl border border-white/10 bg-black/40 p-3 shadow-[0_20px_60px_-40px_rgba(59,130,246,0.5)]">
+                <audio
+                  controls
+                  src={selectedVoice.preview_url}
+                  className="w-full rounded-lg bg-transparent text-foreground [&::-webkit-media-controls-panel]:bg-transparent [&::-webkit-media-controls-enclosure]:rounded-lg [&::-webkit-media-controls-play-button]:bg-gradient-to-r [&::-webkit-media-controls-play-button]:from-primary [&::-webkit-media-controls-play-button]:to-accent [&::-webkit-media-controls-play-button]:rounded-full [&::-webkit-media-controls-play-button]:scale-125 [&::-webkit-media-controls-timeline]:accent-primary [&::-webkit-media-controls-current-time-display]:text-xs [&::-webkit-media-controls-time-remaining-display]:text-xs"
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
         <div className="space-y-4">
           {scriptData.scenes.map((scene) => (
-            <Card key={scene.scene_number} className="p-4 bg-background/30 border-border/40">
+            <Card key={scene.scene_number} className="rounded-xl border border-white/10 bg-black/15 p-4 backdrop-blur">
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
-                  <span className="px-2 py-1 rounded text-xs font-semibold bg-primary/20">
+                  <span className="rounded-full border border-primary/40 bg-primary/10 px-2 py-1 text-xs font-semibold text-primary">
                     Scène {scene.scene_number}
                   </span>
                   <h4 className="font-semibold">{scene.title}</h4>
                 </div>
                 <div className="space-y-2 text-sm">
                   <div>
-                    <span className="font-semibold text-primary">VISUEL:</span>
-                    <p className="text-muted-foreground mt-1">{scene.visual}</p>
-                  </div>
-                  <div>
                     <span className="font-semibold text-accent">NARRATION:</span>
-                    <p className="mt-1">{scene.narration}</p>
+                    <Textarea
+                      value={scene.narration}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setScriptData((prev) => {
+                          if (!prev) return prev;
+                          const updatedScenes = prev.scenes.map((s) =>
+                            s.scene_number === scene.scene_number ? { ...s, narration: value } : s,
+                          );
+                          return { ...prev, scenes: updatedScenes };
+                        });
+                        clearSceneVoiceData(scene.scene_number);
+                      }}
+                      rows={4}
+                      className="mt-2 w-full resize-none rounded-lg border border-white/10 bg-black/30 text-sm backdrop-blur focus-visible:ring-1 focus-visible:ring-primary"
+                    />
                   </div>
+                  {scene.speech && (
+                    <div>
+                      <span className="font-semibold text-emerald-500">DIALOGUE:</span>
+                      <p className="mt-1 italic">&ldquo;{scene.speech}&rdquo;</p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-4 space-y-3 rounded-xl border border-white/10 bg-black/20 p-4">
+                  <Button
+                    type="button"
+                    onClick={() => generateVoiceForScene(scene)}
+                    disabled={sceneVoiceStatus[scene.scene_number] === "loading" || !selectedVoiceId}
+                    className="h-11 w-full gap-2 sm:w-auto"
+                  >
+                    {sceneVoiceStatus[scene.scene_number] === "loading" ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Génération en cours...
+                      </>
+                    ) : (
+                      <>
+                        <Play className="h-4 w-4" />
+                        Générer la voix de cette scène
+                      </>
+                    )}
+                  </Button>
+                  {sceneAudioUrls[scene.scene_number] && (
+                    <div className="rounded-xl border border-primary/20 bg-gradient-to-br from-primary/15 via-primary/5 to-transparent p-3 shadow-[0_25px_80px_-45px_rgba(37,99,235,0.55)]">
+                      <audio
+                        controls
+                        src={sceneAudioUrls[scene.scene_number]}
+                        className="w-full rounded-lg bg-transparent text-foreground [&::-webkit-media-controls-panel]:bg-transparent [&::-webkit-media-controls-enclosure]:rounded-lg [&::-webkit-media-controls-play-button]:bg-gradient-to-r [&::-webkit-media-controls-play-button]:from-primary [&::-webkit-media-controls-play-button]:to-accent [&::-webkit-media-controls-play-button]:rounded-full [&::-webkit-media-controls-play-button]:scale-[1.15] [&::-webkit-media-controls-timeline]:accent-accent [&::-webkit-media-controls-current-time-display]:text-[11px] [&::-webkit-media-controls-time-remaining-display]:text-[11px]"
+                      />
+                    </div>
+                  )}
+                  {sceneVoiceStatus[scene.scene_number] === "error" && (
+                    <p className="text-xs text-destructive">Une erreur est survenue. Vérifiez votre clé API ElevenLabs et réessayez.</p>
+                  )}
                 </div>
               </div>
             </Card>
@@ -720,195 +1617,179 @@ const CreateVideo = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <Navbar />
-      
-      <div className="pt-24 pb-12 px-4">
-        <div className="container mx-auto max-w-6xl">
-          {/* Progress Steps */}
-          <div className="mb-8">
-            <div className="flex items-center justify-between max-w-2xl mx-auto">
-              <div className="flex flex-col items-center flex-1">
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                  currentStep === 'topic' ? 'bg-primary' : 'bg-primary/20'
-                }`}>
-                  {currentStep !== 'topic' ? <Check className="h-5 w-5" /> : '1'}
-                </div>
-                <span className="text-xs mt-2">Sujet</span>
+    <PageShell contentClassName="container px-4 pb-16">
+      <div className="mx-auto max-w-6xl space-y-10">
+        <Card className="space-y-6 rounded-3xl border border-white/10 bg-black/30 p-6 backdrop-blur-xl">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="space-y-2">
+                <Badge variant="outline" className="w-fit border-primary/40 text-primary">
+                  Studio vidéo
+                </Badge>
+                <h1 className="text-3xl font-semibold text-foreground">Montez votre projet</h1>
+                <p className="text-sm text-muted-foreground">
+                  Progressez du brief à l&apos;export sans quitter cette interface.
+                </p>
               </div>
-              <div className={`flex-1 h-0.5 ${currentStep !== 'topic' ? 'bg-primary' : 'bg-border'}`} />
-              <div className="flex flex-col items-center flex-1">
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                  currentStep === 'script' ? 'bg-primary' : currentStep === 'images' ? 'bg-primary/20' : 'bg-border'
-                }`}>
-                  {currentStep === 'images' ? <Check className="h-5 w-5" /> : '2'}
-                </div>
-                <span className="text-xs mt-2">Script</span>
-              </div>
-              <div className={`flex-1 h-0.5 ${currentStep === 'images' ? 'bg-primary' : 'bg-border'}`} />
-              <div className="flex flex-col items-center flex-1">
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                  currentStep === 'images' ? 'bg-primary' : 'bg-border'
-                }`}>
-                  3
-                </div>
-                <span className="text-xs mt-2">Images</span>
+              <div className="space-y-1 text-sm text-muted-foreground lg:text-right">
+                <p className="font-medium text-foreground">{projectName || 'Nouveau projet'}</p>
+                <p>{scriptData?.scenes.length ?? 0} scène(s) planifiées</p>
               </div>
             </div>
-          </div>
 
-          {/* Step 1: Topic Input */}
-          {currentStep === 'topic' && (
-            <Card className="p-8 border-border/40 bg-gradient-to-br from-card/60 to-card/40 backdrop-blur-sm">
-              <div className="space-y-6">
-                <div>
-                  <h2 className="text-3xl font-bold mb-2">Créer une vidéo</h2>
-                  <p className="text-muted-foreground">Décrivez le sujet de votre vidéo intrigante</p>
-                </div>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {STUDIO_STEPS.map((step, index) => {
+                const isCurrent = normalizedStepIndex === index;
+                const isVisited = normalizedStepIndex > index;
+                const isExport = step.id === 'complete' && storyboardComplete;
+                const accent = isCurrent || isExport;
 
+                return (
+                  <div
+                    key={step.id}
+                    className={cn(
+                      'rounded-2xl border border-white/10 bg-black/25 p-4 backdrop-blur-lg transition-colors',
+                      accent ? 'border-primary/60 bg-primary/10 text-foreground' : 'text-muted-foreground'
+                    )}
+                  >
+                    <div className="flex items-center justify-between text-xs font-medium uppercase tracking-wide">
+                      <span>{step.label}</span>
+                      {(isVisited || isExport) && <Check className="h-4 w-4 text-primary" />}
+                    </div>
+                    <p className="mt-2 text-sm text-foreground">{step.description}</p>
+                  </div>
+                );
+              })}
+            </div>
+        </Card>
+
+        {currentStep === 'topic' && (
+            <Card className="space-y-6 rounded-3xl border border-white/10 bg-black/30 p-8 backdrop-blur-xl">
+              <div className="space-y-2">
+                <h2 className="text-2xl font-semibold text-foreground">Définir le brief</h2>
+                <p className="text-sm text-muted-foreground">
+                  Donnez un nom à votre projet et décrivez le ton général. Le style influence les prompts visuels.
+                </p>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="project-name">Nom du projet</Label>
                   <Input
                     id="project-name"
-                    placeholder="Ex: L'histoire du Mur de Berlin"
+                    placeholder="Ex : Lancement produit 2025"
                     value={projectName}
-                    onChange={(e) => setProjectName(e.target.value)}
-                    className="bg-background/50"
+                    onChange={(event) => setProjectName(event.target.value)}
                   />
                 </div>
-
                 <div className="space-y-2">
-                  <Label htmlFor="topic">Sujet de la vidéo</Label>
-                  <Textarea
-                    id="topic"
-                    placeholder="Ex: Raconte l'histoire intrigante du Mur de Berlin, comment il a divisé une ville et des familles pendant des décennies..."
-                    value={topic}
-                    onChange={(e) => setTopic(e.target.value)}
-                    rows={6}
-                    className="bg-background/50 resize-none"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="visual-style">Style visuel</Label>
+                  <Label htmlFor="visual-style">Style visuel privilégié</Label>
                   <select
                     id="visual-style"
                     value={visualStyle}
-                    onChange={(e) => setVisualStyle(e.target.value)}
-                    className="w-full px-3 py-2 border border-border bg-background/50 rounded-md text-foreground"
+                    onChange={(event) => setVisualStyle(event.target.value)}
+                    className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-foreground backdrop-blur"
                   >
-                    <option value="none">Aucun style spécifique</option>
-                    <option value="desaturated-toon">🎨 Desaturated Atmospheric Toon (Niji 6) - Ambiance sérieuse, plat mais cinématique</option>
-                    <option value="digital-noir">🌃 Digital Noir Angular Realism (v7) - Néo-minimaliste, éclairage dramatique</option>
-                    <option value="bold-graphic">⚡ Bold Graphic Minimalism (v7) - Silhouettes fortes, tons plats, tension</option>
-                    <option value="muted-adventure">🏔️ Muted Desaturated Adventure (v7) - Calme, cadrage large, storytelling par silhouettes</option>
-                    <option value="whimsical-cartoon">🎪 Cracked-Egg Whimsical Cartoon (Niji 6) - Proportions bizarres, énergie joyeuse</option>
-                    <option value="late-night-action">🌙 Late-Night Toonline Action (v7) - Ton sérieux, animation précise, ambiance lourde</option>
+                    {STYLE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
                   </select>
                 </div>
+              </div>
 
-                <Button 
-                  className="w-full bg-gradient-to-r from-primary to-accent hover:opacity-90 text-lg h-14"
-                  disabled={!projectName.trim() || !topic.trim() || isGenerating}
-                  onClick={generateScript}
-                >
-                  {isGenerating ? (
-                    <>
-                      <Loader2 className="h-5 w-5 mr-2 animate-spin" />
-                      Génération du script...
-                    </>
-                  ) : (
-                    <>
-                      <Wand2 className="h-5 w-5 mr-2" />
-                      Générer le script avec l'IA
-                    </>
-                  )}
+              <div className="space-y-2">
+                <Label htmlFor="topic">Sujet de la vidéo</Label>
+                <Textarea
+                  id="topic"
+                  placeholder="Décrivez le message, le ton, les scènes clés..."
+                  value={topic}
+                  onChange={(event) => setTopic(event.target.value)}
+                  rows={6}
+                  className="resize-none rounded-xl border border-white/10 bg-black/20 text-sm backdrop-blur"
+                />
+              </div>
+
+              <Button
+                className="h-12 w-full gap-2 text-sm"
+                disabled={!projectName.trim() || !topic.trim() || isGenerating}
+                onClick={generateScript}
+              >
+                {isGenerating ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Génération du script...
+                  </>
+                ) : (
+                  <>
+                    <Wand2 className="h-4 w-4" />
+                    Générer le script avec l&apos;IA
+                  </>
+                )}
+              </Button>
+            </Card>
+        )}
+
+        {currentStep === 'script' && (
+            <Card className="space-y-6 rounded-3xl border border-white/10 bg-black/30 p-8 backdrop-blur-xl">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 className="text-2xl font-semibold text-foreground">Révision du script</h2>
+                  <p className="text-sm text-muted-foreground">Modifiez le plan ou basculez en mode JSON pour un contrôle total.</p>
+                </div>
+                <Button variant="outline" onClick={() => setIsEditingScript(!isEditingScript)} className="gap-2 text-sm">
+                  <Edit2 className="h-4 w-4" />
+                  {isEditingScript ? 'Voir le rendu' : 'Éditer en JSON'}
+                </Button>
+              </div>
+
+              {isEditingScript ? (
+                <Textarea
+                  value={editedScriptJson}
+                  onChange={(event) => setEditedScriptJson(event.target.value)}
+                  rows={18}
+                  className="rounded-xl border border-white/10 bg-black/20 font-mono text-xs backdrop-blur"
+                />
+              ) : (
+                renderScriptPreview()
+              )}
+
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <Button variant="ghost" onClick={() => setCurrentStep('topic')} className="flex-1">
+                  Retour
+                </Button>
+                <Button onClick={approveScript} className="flex-1 gap-2 text-sm">
+                  <Check className="h-4 w-4" />
+                  Passer au storyboard
                 </Button>
               </div>
             </Card>
-          )}
+        )}
 
-          {/* Step 2: Script Review */}
-          {currentStep === 'script' && (
-            <Card className="p-8 border-border/40 bg-gradient-to-br from-card/60 to-card/40 backdrop-blur-sm">
-              <div className="space-y-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className="text-3xl font-bold mb-2">Révision du script</h2>
-                    <p className="text-muted-foreground">Modifiez le script si nécessaire</p>
-                  </div>
-                  <Button
-                    variant="outline"
-                    onClick={() => setIsEditingScript(!isEditingScript)}
-                  >
-                    <Edit2 className="h-4 w-4 mr-2" />
-                    {isEditingScript ? 'Voir le rendu' : 'Éditer JSON'}
-                  </Button>
-                </div>
-
-                {isEditingScript ? (
-                  <Textarea
-                    value={editedScriptJson}
-                    onChange={(e) => setEditedScriptJson(e.target.value)}
-                    rows={20}
-                    className="bg-background/50 font-mono text-sm"
-                  />
-                ) : (
-                  renderScriptPreview()
-                )}
-
-                <div className="flex gap-4">
-                  <Button 
-                    variant="outline"
-                    onClick={() => setCurrentStep('topic')}
-                    className="flex-1"
-                  >
-                    Retour
-                  </Button>
-                  <Button 
-                    className="flex-1 bg-gradient-to-r from-primary to-accent hover:opacity-90"
-                    onClick={approveScript}
-                  >
-                    <Check className="h-4 w-4 mr-2" />
-                    Approuver et continuer
-                  </Button>
-                </div>
-              </div>
-            </Card>
-          )}
-
-          {/* Step 3: Image Generation */}
-          {currentStep === 'images' && scriptData && (
+        {currentStep === 'images' && scriptData && (
             <div className="space-y-6">
               {generatedImages.length === 0 ? (
-                <Card className="p-8 border-border/40 bg-gradient-to-br from-card/60 to-card/40 backdrop-blur-sm text-center">
-                  <Wand2 className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                  <h3 className="text-xl font-semibold mb-2">Générer toutes les images</h3>
-                  <p className="text-muted-foreground mb-6">
-                    Générez toutes les images d'un coup pour visualiser l'ensemble du projet
-                  </p>
-                  <div className="flex gap-4 justify-center">
-                    <Button 
-                      variant="outline"
-                      onClick={() => setCurrentStep('script')}
-                      size="lg"
-                    >
+                <Card className="space-y-6 rounded-3xl border border-white/10 bg-black/30 p-10 text-center backdrop-blur-xl">
+                  <Wand2 className="mx-auto h-10 w-10 text-primary" />
+                  <div className="space-y-2">
+                    <h3 className="text-2xl font-semibold text-foreground">Générons vos images</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Lancez la génération pour créer le storyboard complet en un passage.
+                    </p>
+                  </div>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
+                    <Button variant="ghost" onClick={() => setCurrentStep('script')}>
                       Retour au script
                     </Button>
-                    <Button 
-                      onClick={generateAllImages}
-                      disabled={isGeneratingImage}
-                      size="lg"
-                      className="bg-gradient-to-r from-primary to-accent hover:opacity-90"
-                    >
+                    <Button onClick={generateAllImages} disabled={isGeneratingImage} className="gap-2 text-sm">
                       {isGeneratingImage ? (
                         <>
-                          <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                          <Loader2 className="h-4 w-4 animate-spin" />
                           Génération de {scriptData.scenes.length} images...
                         </>
                       ) : (
                         <>
-                          <Wand2 className="mr-2 h-5 w-5" />
+                          <Wand2 className="h-4 w-4" />
                           Générer toutes les images ({scriptData.scenes.length})
                         </>
                       )}
@@ -917,27 +1798,26 @@ const CreateVideo = () => {
                 </Card>
               ) : (
                 <>
-                  <Card className="p-6 border-border/40 bg-gradient-to-br from-card/60 to-card/40 backdrop-blur-sm">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-xl font-semibold">
-                        Images générées ({generatedImages.length}/{scriptData.scenes.length})
-                      </h3>
-                      <Button
-                        onClick={downloadAllImages}
-                        variant="outline"
-                        disabled={isGeneratingImage}
-                      >
-                        <Download className="mr-2 h-4 w-4" />
-                        Télécharger tout (ZIP)
-                      </Button>
-                    </div>
-                  </Card>
-
                   <VideoTimeline
+                    timelineDuration={timelineDuration}
+                    audioClips={voiceAudioClips}
+                    previewVideoRef={timelinePreviewRef}
+                    onPlaybackControllerChange={handlePlaybackControllerChange}
+                    onActiveSceneChange={setActiveTimelineScene}
+                    onDownloadAssets={downloadAllAssets}
+                    isDownloadDisabled={isGeneratingImage}
+                    sceneVoiceData={sceneVoiceData}
                     scenes={scriptData.scenes.map((scene) => {
-                      const generatedImage = generatedImages.find(img => img.sceneNumber === scene.scene_number);
+                      const generatedImage = generatedImages.find((img) => img.sceneNumber === scene.scene_number);
                       const isGenerating = generatingVideoScenes.has(scene.scene_number);
-                      
+                      const status: SceneStatus = isGenerating
+                        ? 'generating-video'
+                        : generatedImage
+                          ? 'ready'
+                          : isLoadingProject
+                            ? 'loading'
+                            : 'empty';
+
                       return {
                         sceneNumber: scene.scene_number,
                         title: scene.title,
@@ -945,29 +1825,33 @@ const CreateVideo = () => {
                         videoUrl: generatedImage?.videoUrl,
                         prompt: generatedImage?.prompt,
                         narration: scene.narration,
-                        status: isGenerating 
-                          ? 'generating-video' 
-                          : generatedImage 
-                            ? 'ready' 
-                            : 'loading'
+                        styleId: generatedImage?.styleId,
+                        stylePrompt: generatedImage?.stylePrompt,
+                        styleOverrideId: sceneStyleOverrides[scene.scene_number],
+                        visual: scene.visual,
+                        status,
+                        durationSeconds: estimatedSceneDuration,
                       };
                     })}
                     onRegenerateImage={regenerateImage}
                     onGenerateVideo={generateVideo}
                     isRegenerating={isGeneratingImage}
+                    isSceneGenerating={(sceneNumber) => generatingVideoScenes.has(sceneNumber)}
+                    onSceneStyleChange={handleSceneStyleChange}
+                    styleOptions={STYLE_OPTIONS}
                   />
 
-                  <Card className="p-6 border-border/40 bg-gradient-to-br from-card/60 to-card/40 backdrop-blur-sm">
-                    <div className="flex gap-4">
-                      <Button variant="outline" onClick={() => setCurrentStep('script')} className="flex-1">
+                  <Card className="rounded-3xl border border-white/10 bg-black/30 p-6 backdrop-blur-xl">
+                    <div className="flex flex-col gap-3 sm:flex-row">
+                      <Button variant="ghost" onClick={() => setCurrentStep('script')} className="flex-1">
                         Retour au script
                       </Button>
-                      <Button 
+                      <Button
                         onClick={finishProject}
                         disabled={generatedImages.length !== scriptData.scenes.length || isGeneratingImage}
-                        className="flex-1 bg-gradient-to-r from-primary to-accent hover:opacity-90"
+                        className="flex-1 gap-2 text-sm"
                       >
-                        <Check className="h-4 w-4 mr-2" />
+                        <Check className="h-4 w-4" />
                         Terminer le projet
                       </Button>
                     </div>
@@ -975,10 +1859,9 @@ const CreateVideo = () => {
                 </>
               )}
             </div>
-          )}
-        </div>
+        )}
       </div>
-    </div>
+    </PageShell>
   );
 };
 

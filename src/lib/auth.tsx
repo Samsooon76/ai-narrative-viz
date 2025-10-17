@@ -1,21 +1,11 @@
-import { createContext, useContext, useEffect, useState } from 'react';
-import { User, Session } from '@supabase/supabase-js';
+import type { ReactNode } from 'react';
+import { useEffect, useState } from 'react';
+import { AuthError, Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
-import { useNavigate } from 'react-router-dom';
 import { toast } from '@/hooks/use-toast';
+import { AuthContext, type AuthContextType } from './auth-context';
 
-interface AuthContextType {
-  user: User | null;
-  session: Session | null;
-  signUp: (email: string, password: string, fullName?: string) => Promise<{ error: any }>;
-  signIn: (email: string, password: string) => Promise<{ error: any }>;
-  signOut: () => Promise<void>;
-  loading: boolean;
-}
-
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
+export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
@@ -86,6 +76,34 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     return { error };
   };
 
+  const signInWithGoogle = async () => {
+    const redirectTo =
+      typeof window !== "undefined" ? `${window.location.origin}/dashboard` : undefined;
+
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: redirectTo
+        ? {
+            redirectTo,
+            queryParams: { prompt: "select_account" },
+          }
+        : {
+            queryParams: { prompt: "select_account" },
+          },
+    });
+
+    if (error) {
+      console.error("Google sign-in error:", error.message);
+      toast({
+        title: "Connexion Google impossible",
+        description: "Veuillez réessayer ou utiliser un autre moyen de connexion.",
+        variant: "destructive",
+      });
+    }
+
+    return { error };
+  };
+
   const signOut = async () => {
     const { error } = await supabase.auth.signOut();
     if (error) {
@@ -99,16 +117,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, signUp, signIn, signOut, loading }}>
+    <AuthContext.Provider
+      value={{ user, session, signUp, signIn, signInWithGoogle, signOut, loading }}
+    >
       {children}
     </AuthContext.Provider>
   );
-};
-
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
 };

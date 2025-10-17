@@ -5,13 +5,31 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+type GeminiInlineData = {
+  inlineData?: {
+    data?: string;
+    mimeType?: string;
+  };
+};
+
+type GeminiCandidate = {
+  content?: {
+    parts?: GeminiInlineData[];
+  };
+};
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { prompt, sceneTitle } = await req.json();
+    const {
+      prompt,
+      sceneTitle,
+      styleId,
+      stylePrompt,
+    } = await req.json();
     
     if (!prompt) {
       return new Response(
@@ -20,86 +38,90 @@ serve(async (req) => {
       );
     }
 
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    if (!LOVABLE_API_KEY) {
-      throw new Error('LOVABLE_API_KEY non configurée');
+    const GOOGLE_API_KEY = Deno.env.get('GOOGLE_API_KEY') ?? Deno.env.get('LOVABLE_API_KEY');
+    if (!GOOGLE_API_KEY) {
+      throw new Error('GOOGLE_API_KEY non configurée');
     }
 
-    console.log('Génération image pour:', sceneTitle);
+    console.log('Génération image pour:', sceneTitle, 'style:', styleId);
 
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-        'Content-Type': 'application/json',
+    const DEFAULT_STYLE_ID = 'nano-banana';
+    const STYLE_LIBRARY: Record<string, string> = {
+      'arcane': 'Arcane animated series look, painterly steampunk lighting, vivid rim glow, expressive portraits, layered brush textures.',
+      'desaturated-toon': 'Muted atmospheric 2D toon, long expressive shadows, soft mist, refined silhouettes, understated palette.',
+      'digital-noir': 'Angular neo-noir graphic novel, hard-edged shading, geometric shapes, teal-green monochrome, cinematic contrast.',
+      'bold-graphic': 'Bold poster-like comic art, thick silhouettes, crisp graphic blocks, red-and-black high contrast, strong negative space.',
+      'muted-adventure': 'Soft cinematic adventure painting, wide depth, earthy palette, atmospheric haze, story-rich environmental cues.',
+      'whimsical-cartoon': 'Playful surreal animation style, exaggerated proportions, bouncing curves, candy colors, lively expressions.',
+      'late-night-action': 'Nighttime action anime, backlit silhouettes, sharp highlights, tense motion, neon reflections.',
+      [DEFAULT_STYLE_ID]: 'Nano Banana stylized anime realism, saturated neon palette, hyper detailed characters, precise contour lines, motion-friendly staging, dynamic lighting.'
+    };
+
+    const resolvedStyleId = (typeof styleId === 'string' && styleId.trim().length > 0) ? styleId.trim() : DEFAULT_STYLE_ID;
+    const fallbackStyle = STYLE_LIBRARY[resolvedStyleId] ?? STYLE_LIBRARY[DEFAULT_STYLE_ID];
+    const resolvedStylePrompt = (typeof stylePrompt === 'string' && stylePrompt.trim().length > 0)
+      ? stylePrompt.trim()
+      : fallbackStyle;
+
+    const response = await fetch(
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent'
+        + `?key=${GOOGLE_API_KEY}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                {
+                  text: `Create a highly dynamic 9:16 portrait illustration ready for animation.\n\nSTYLE FOCUS: ${resolvedStylePrompt}\n\nINSTRUCTIONS:\n- Translate any non-English text in the brief into fluent English.\n- Emphasize cinematic lighting, believable anatomy, and motion-friendly silhouettes.\n- Add environmental depth cues that support parallax for animation.\n\nSCENE TO ILLUSTRATE:\n${prompt}`,
+                },
+              ],
+            },
+          ],
+          generationConfig: {
+            temperature: 0.8,
+            responseModalities: ['IMAGE'],
+          },
+        }),
       },
-      body: JSON.stringify({
-        model: 'google/gemini-2.5-flash-image-preview',
-        messages: [
-          { 
-            role: 'user', 
-            content: `Create a highly dynamic and cinematic 9:16 vertical portrait image perfect for animation and video storytelling.
-
-IMAGE REQUIREMENTS:
-- Dynamic composition with clear action or movement potential
-- Expressive characters with strong emotions and gestures
-- Dramatic lighting that creates depth and atmosphere
-- Compelling foreground and background elements for parallax animation
-- Cinematic framing with visual storytelling elements
-- Rich details that will be captivating when animated
-
-SCENE TO ILLUSTRATE:
-${prompt}
-
-Generate a visually stunning image in English that tells a story and can be brought to life through animation. Focus on drama, movement potential, and captivating visual details.` 
-          }
-        ],
-        modalities: ['image', 'text']
-      }),
-    });
+    );
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Erreur API Lovable AI:', response.status, errorText);
-      
-      if (response.status === 429) {
-        return new Response(
-          JSON.stringify({ error: 'Limite de requêtes atteinte. Réessayez dans quelques instants.' }),
-          { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+      console.error('Erreur API Gemini:', response.status, errorText);
+      let reason = `Gemini error ${response.status}`;
+      try {
+        const parsed = JSON.parse(errorText);
+        const message = parsed?.error?.message || parsed?.message || parsed?.error || parsed;
+        if (typeof message === 'string') {
+          reason += `: ${message}`;
+        }
+      } catch (_) {
+        if (errorText) {
+          reason += `: ${errorText}`;
+        }
       }
-      
-      if (response.status === 402) {
-        return new Response(
-          JSON.stringify({ error: 'Crédits Lovable AI épuisés. Veuillez recharger votre compte.' }),
-          { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-      
-      throw new Error(`Erreur API: ${response.status}`);
+      throw new Error(reason);
     }
 
-    const data = await response.json();
-    
-    console.log('Réponse API complète:', JSON.stringify(data));
-    
-    // Extraire l'image base64 de la réponse
-    const images = data.choices?.[0]?.message?.images;
-    
-    if (!images || images.length === 0) {
+    const data = await response.json() as { candidates?: GeminiCandidate[] };
+    const inlinePart = (data?.candidates ?? [])
+      .flatMap((candidate) => candidate.content?.parts ?? [])
+      .find((part) => part.inlineData?.data);
+
+    if (!inlinePart) {
       console.error('Structure de la réponse:', JSON.stringify(data, null, 2));
-      throw new Error('Aucune image générée dans la réponse API');
+      throw new Error('Aucune donnée image générée');
     }
 
-    // Vérifier la structure de l'image
-    const imageData = images[0];
-    if (!imageData?.image_url?.url) {
-      console.error('Structure image invalide:', JSON.stringify(imageData, null, 2));
-      throw new Error('Structure de l\'image invalide');
-    }
+    const inlineData = inlinePart.inlineData ?? {};
+    const mimeType = inlineData.mimeType ?? 'image/png';
+    const base64Data = inlineData.data ?? '';
 
-    const imageUrl = imageData.image_url.url;
-    
     console.log('Image générée avec succès, upload vers Storage...');
 
     // Upload vers Supabase Storage au lieu de retourner base64
@@ -109,8 +131,6 @@ Generate a visually stunning image in English that tells a story and can be brou
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    // Extraire les données de l'image
-    const base64Data = imageUrl.split(',')[1];
     const imageBuffer = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
 
     // Créer un nom de fichier unique
@@ -121,7 +141,7 @@ Generate a visually stunning image in English that tells a story and can be brou
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from('generated-images')
       .upload(filePath, imageBuffer, {
-        contentType: 'image/png',
+        contentType: mimeType,
         cacheControl: '3600',
         upsert: false
       });
@@ -139,7 +159,7 @@ Generate a visually stunning image in English that tells a story and can be brou
     console.log('Image uploadée avec succès:', publicUrl);
 
     return new Response(
-      JSON.stringify({ imageUrl: publicUrl }),
+      JSON.stringify({ imageUrl: publicUrl, styleId: resolvedStyleId, stylePrompt: resolvedStylePrompt }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 

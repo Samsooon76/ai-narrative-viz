@@ -3,6 +3,17 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+};
+
+type GeminiTextPart = {
+  text?: string;
+};
+
+type GeminiTextCandidate = {
+  content?: {
+    parts?: GeminiTextPart[];
+  };
 };
 
 serve(async (req) => {
@@ -33,50 +44,19 @@ serve(async (req) => {
 
     if (type === 'script') {
       const styleMap: Record<string, string> = {
-        'desaturated-toon': `\n\nSTYLE VISUEL IMPOSÉ: Desaturated Atmospheric Toon Style (Niji 6)
-- Ambiance sérieuse, style toon 2D désaturé mais cinématique
-- Ombres longues et subtiles, brume légère
-- Rythme poétique et calme
-- Exemple: un guerrier silencieux marchant sur un chemin de montagne vide
-- Style: desaturated 2D toon style, long shadows, subtle mist, poetic pacing --niji 6 --ar 16:9`,
-        
-        'digital-noir': `\n\nSTYLE VISUEL IMPOSÉ: Digital Noir Angular Realism (v7)
-- Style cartoon néo-minimaliste avec angles marqués
-- Ombrage plat, ombres aux contours durs, traits faciaux géométriques
-- Éclairage cinématique sombre, palette monochrome verte
-- Contours épais, frame d'animation 2D
-- Style: sharp-angled neo-minimalist cartoon style, flat shading, hard-edged shadows, geometric features, dark cinematic lighting --v 7`,
-        
-        'bold-graphic': `\n\nSTYLE VISUEL IMPOSÉ: Bold Graphic Minimalism (v7)
-- Minimalisme graphique audacieux
-- Silhouettes fortes, tons plats, tension dramatique
-- Ombres aux bords nets, palette rouge-noir
-- Atmosphère stylisée de bande dessinée
-- Style: bold graphic minimalism, sharp-edged shadows, red-black color scheme, stylized comic atmosphere --v 7 --style raw --ar 16:9`,
-        
-        'muted-adventure': `\n\nSTYLE VISUEL IMPOSÉ: Muted Desaturated Adventure Style (v7)
-- Style animation désaturé et doux
-- Cadrage large, calme, storytelling par silhouettes
-- Palette limitée, ambiance poétique
-- Composition paysage large
-- Style: muted desaturated animation style, limited palette, poetic vibe, wide landscape composition --v 7 --ar 16:9`,
-        
-        'whimsical-cartoon': `\n\nSTYLE VISUEL IMPOSÉ: Cracked-Egg Whimsical Cartoon Style (Niji 6)
-- Proportions bizarres, énergie rebondissante
-- Formes étranges, chaos joyeux et fun
-- Univers décalé et ludique
-- Style: cracked-egg whimsical cartoon style, weird shapes, joyful chaos --niji 6 --ar 16:9`,
-        
-        'late-night-action': `\n\nSTYLE VISUEL IMPOSÉ: Late-Night Toonline Action Style (v7)
-- Ton sérieux, animation précise
-- Ambiance lourde et nocturne
-- Silhouettes en contre-jour, énergie de dialogue minimal
-- Style: late-night toonline action style, backlight silhouette, minimal dialogue energy --v 7 --ar 16:9`
+        'arcane': `\n\nSTYLE VISUEL IMPOSÉ: Arcane animated series. Mélange peinture numérique et traits BD réalistes, éclairages steampunk contrastés, expressions intenses.` ,
+        'desaturated-toon': `\n\nSTYLE VISUEL IMPOSÉ: Toon désaturé. Ambiance sobre, palette froide, longues ombres poétiques, silhouettes épurées.` ,
+        'digital-noir': `\n\nSTYLE VISUEL IMPOSÉ: Digital noir anguleux. Formes géométriques, ombrage plat, contraste dramatique vert émeraude.` ,
+        'bold-graphic': `\n\nSTYLE VISUEL IMPOSÉ: Graphic novel minimaliste. Silhouettes puissantes, aplats rouges et noirs, tension dramatique.` ,
+        'muted-adventure': `\n\nSTYLE VISUEL IMPOSÉ: Aventure désaturée. Palette douce, cadrages larges, atmosphère contemplative.` ,
+        'whimsical-cartoon': `\n\nSTYLE VISUEL IMPOSÉ: Cartoon fantaisiste. Proportions exagérées, énergie rebondissante, couleurs acidulées.` ,
+        'late-night-action': `\n\nSTYLE VISUEL IMPOSÉ: Action nocturne. Contre-jours nerveux, néons froids, tension continue.` ,
+        'nano-banana': `\n\nSTYLE VISUEL IMPOSÉ: Nano Banana. Style anime réaliste saturé, détails ultra précis, néons, silhouettes prêtes à l'animation, contours nets.` ,
       };
 
       const styleInstructions = visualStyle && visualStyle !== 'none' 
-        ? styleMap[visualStyle] || ''
-        : '';
+        ? styleMap[visualStyle] || styleMap['nano-banana'] || ''
+        : styleMap['nano-banana'] || '';
 
       systemPrompt = `Tu es un scénariste expert spécialisé dans les histoires dramatiques captivantes pour vidéos courtes.${styleInstructions}
 
@@ -89,7 +69,9 @@ Tu DOIS répondre UNIQUEMENT avec un objet JSON valide dans ce format exact:
       "scene_number": 1,
       "title": "CONTEXTE",
       "visual": "Description détaillée du visuel pour animation",
-      "narration": "Texte de la narration"
+      "narration": "Texte de la narration",
+      "speech": "Phrase courte réellement prononcée dans la scène (max 12 mots)",
+      "audio_description": "Ambiance sonore immersive (musique, effets, bruitages)"
     }
   ]
 }`;
@@ -133,8 +115,10 @@ Pour CHAQUE scène, crée une description visuelle ANIMABLE:
 - Décris l'atmosphère et l'éclairage pour créer du drame
 - Ajoute des détails visuels captivants (expressions, gestes, environnement vivant)
 - Pense "cinéma" : cadrages, mouvements de caméra implicites
+- Ajoute un champ "speech" avec une phrase courte prononcée (ton naturel, max 12 mots)
+- Ajoute un champ "audio_description" avec l'ambiance sonore (musique, foley, bruitages précis)
 
-Le script doit contenir 10-12 scènes au total (durée visée: 60 secondes).
+ Calcule le nombre optimal de scènes pour que la vidéo finale dure entre 60 et 90 secondes (en te basant sur ~5 secondes par scène) et ajuste la structure si le sujet nécessite plus ou moins de moments clés.
 
 IMPORTANT: Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
     } else if (type === 'prompts') {
@@ -166,84 +150,84 @@ Critères pour les prompts:
 - Sois très descriptif et visuel`;
     }
 
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    const GOOGLE_API_KEY = Deno.env.get('GOOGLE_API_KEY') ?? Deno.env.get('LOVABLE_API_KEY');
+    if (!GOOGLE_API_KEY) {
+      throw new Error('GOOGLE_API_KEY non configurée');
+    }
+
+    const model = 'gemini-2.5-flash';
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GOOGLE_API_KEY}`,
+      {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt }
+        systemInstruction: {
+          role: 'system',
+          parts: [{ text: systemPrompt }],
+        },
+        contents: [
+          {
+            role: 'user',
+            parts: [{ text: userPrompt }],
+          },
         ],
-        temperature: 0.8,
+        generationConfig: {
+          temperature: 0.8,
+        },
       }),
-    });
+      }
+    );
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Erreur API Lovable AI:', response.status, errorText);
-      
-      if (response.status === 429) {
-        return new Response(
-          JSON.stringify({ error: 'Limite de requêtes atteinte. Réessayez dans quelques instants.' }),
-          { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-      
-      if (response.status === 402) {
-        return new Response(
-          JSON.stringify({ error: 'Crédits Lovable AI épuisés. Veuillez recharger votre compte.' }),
-          { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-      
+      console.error('Erreur API Gemini:', response.status, errorText);
       throw new Error(`Erreur API: ${response.status}`);
     }
 
-    const data = await response.json();
-    const content = data.choices[0].message.content;
-    
+    const data = await response.json() as { candidates?: GeminiTextCandidate[] };
+    const textContent = (data?.candidates ?? [])
+      .flatMap((candidate) => candidate.content?.parts ?? [])
+      .map((part) => part.text ?? '')
+      .join('')
+      .trim();
+
     console.log(`${type} généré avec succès`);
 
     // Pour les scripts, parser le JSON
+    const cleanJson = textContent.replace(/```json|```/g, '').trim();
+
     if (type === 'script') {
       try {
-        const jsonMatch = content.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          const parsedScript = JSON.parse(jsonMatch[0]);
-          return new Response(
-            JSON.stringify({ script: parsedScript }),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
-        throw new Error('Format JSON invalide dans la réponse');
+        const parsedScript = JSON.parse(cleanJson);
+        return new Response(
+          JSON.stringify({ script: parsedScript }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
       } catch (e) {
         console.error('Erreur parsing JSON script:', e);
-        throw new Error('Impossible de parser le script généré');
+        throw new Error(`Impossible de parser le script généré: ${textContent}`);
       }
     }
 
     if (type === 'prompts') {
       // Parse le JSON des prompts
       try {
-        const jsonMatch = content.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          const parsedPrompts = JSON.parse(jsonMatch[0]);
-          return new Response(
-            JSON.stringify({ prompts: parsedPrompts.prompts }),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
+        const parsedPrompts = JSON.parse(cleanJson);
+        return new Response(
+          JSON.stringify({ prompts: parsedPrompts.prompts ?? [] }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
       } catch (e) {
         console.error('Erreur parsing JSON prompts:', e);
+        throw new Error(`Impossible de parser les prompts générés: ${textContent}`);
       }
     }
 
     return new Response(
-      JSON.stringify({ content }),
+      JSON.stringify({ content: textContent }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
