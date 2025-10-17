@@ -5,19 +5,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-type GeminiInlineData = {
-  inlineData?: {
-    data?: string;
-    mimeType?: string;
-  };
-};
-
-type GeminiCandidate = {
-  content?: {
-    parts?: GeminiInlineData[];
-  };
-};
-
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -38,12 +25,17 @@ serve(async (req) => {
       );
     }
 
-    const GOOGLE_API_KEY = Deno.env.get('GOOGLE_API_KEY') ?? Deno.env.get('LOVABLE_API_KEY');
-    if (!GOOGLE_API_KEY) {
-      throw new Error('GOOGLE_API_KEY non configurée');
+    const FAL_KEY =
+      Deno.env.get('FAL_KEY') ??
+      Deno.env.get('FAL_API_KEY') ??
+      Deno.env.get('FALAI_API_KEY') ??
+      Deno.env.get('FAL_AI_API_KEY');
+
+    if (!FAL_KEY) {
+      throw new Error('Aucune clé API Fal.ai détectée. Configurez FAL_KEY (ou FAL_API_KEY) avec votre token.');
     }
 
-    console.log('Génération image pour:', sceneTitle, 'style:', styleId);
+    console.log('Génération image avec Minimax pour:', sceneTitle, 'style:', styleId);
 
     const DEFAULT_STYLE_ID = 'nano-banana';
     const STYLE_LIBRARY: Record<string, string> = {
@@ -63,37 +55,36 @@ serve(async (req) => {
       ? stylePrompt.trim()
       : fallbackStyle;
 
+    // Construire le prompt complet pour Minimax
+    const fullPrompt = `Create a highly dynamic 9:16 portrait illustration ready for animation.\n\nSTYLE FOCUS: ${resolvedStylePrompt}\n\nINSTRUCTIONS:\n- Emphasize cinematic lighting, believable anatomy, and motion-friendly silhouettes.\n- Add environmental depth cues that support parallax for animation.\n\nSCENE TO ILLUSTRATE:\n${prompt}`;
+
+    // Limiter le prompt à 1500 caractères (max Minimax)
+    const truncatedPrompt = fullPrompt.length > 1500 ? fullPrompt.substring(0, 1500) : fullPrompt;
+
+    console.log('Appel fal.ai avec prompt longueur:', truncatedPrompt.length);
+
+    const falHeaders = {
+      'Authorization': `Key ${FAL_KEY}`,
+      'Content-Type': 'application/json',
+    };
+
     const response = await fetch(
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent'
-        + `?key=${GOOGLE_API_KEY}`,
+      'https://queue.fal.run/fal-ai/minimax/image-01',
       {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: falHeaders,
         body: JSON.stringify({
-          contents: [
-            {
-              role: 'user',
-              parts: [
-                {
-                  text: `Create a highly dynamic 9:16 portrait illustration ready for animation.\n\nSTYLE FOCUS: ${resolvedStylePrompt}\n\nINSTRUCTIONS:\n- Translate any non-English text in the brief into fluent English.\n- Emphasize cinematic lighting, believable anatomy, and motion-friendly silhouettes.\n- Add environmental depth cues that support parallax for animation.\n\nSCENE TO ILLUSTRATE:\n${prompt}`,
-                },
-              ],
-            },
-          ],
-          generationConfig: {
-            temperature: 0.8,
-            responseModalities: ['IMAGE'],
-          },
+          prompt: truncatedPrompt,
+          aspect_ratio: '9:16',
+          num_images: 1,
         }),
       },
     );
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Erreur API Gemini:', response.status, errorText);
-      let reason = `Gemini error ${response.status}`;
+      console.error('Erreur API Minimax:', response.status, errorText);
+      let reason = `Minimax error ${response.status}`;
       try {
         const parsed = JSON.parse(errorText);
         const message = parsed?.error?.message || parsed?.message || parsed?.error || parsed;
@@ -108,30 +99,36 @@ serve(async (req) => {
       throw new Error(reason);
     }
 
-    const data = await response.json() as { candidates?: GeminiCandidate[] };
-    const inlinePart = (data?.candidates ?? [])
-      .flatMap((candidate) => candidate.content?.parts ?? [])
-      .find((part) => part.inlineData?.data);
+    const data = await response.json() as { images?: Array<{ url?: string; content_type?: string }> };
+    const images = data?.images ?? [];
+    const firstImage = images[0];
 
-    if (!inlinePart) {
-      console.error('Structure de la réponse:', JSON.stringify(data, null, 2));
-      throw new Error('Aucune donnée image générée');
+    if (!firstImage?.url) {
+      console.error('Structure de la réponse Minimax:', JSON.stringify(data, null, 2));
+      throw new Error('Aucune image générée par Minimax');
     }
 
-    const inlineData = inlinePart.inlineData ?? {};
-    const mimeType = inlineData.mimeType ?? 'image/png';
-    const base64Data = inlineData.data ?? '';
+    const imageUrl = firstImage.url;
+    const mimeType = firstImage.content_type ?? 'image/png';
+
+    // Récupérer l'image depuis l'URL fournie par Minimax
+    console.log('Téléchargement de l\'image depuis Minimax...');
+    const imageResponse = await fetch(imageUrl);
+    if (!imageResponse.ok) {
+      throw new Error(`Impossible de récupérer l'image de Minimax (${imageResponse.status})`);
+    }
+
+    const imageBuffer = await imageResponse.arrayBuffer();
+    const imageUint8 = new Uint8Array(imageBuffer);
 
     console.log('Image générée avec succès, upload vers Storage...');
 
-    // Upload vers Supabase Storage au lieu de retourner base64
+    // Upload vers Supabase Storage
     const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2.7.1');
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
-
-    const imageBuffer = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
 
     // Créer un nom de fichier unique
     const fileName = `scene-${sceneTitle?.replace(/[^a-z0-9]/gi, '-').toLowerCase() || Date.now()}-${Date.now()}.png`;
@@ -140,7 +137,7 @@ serve(async (req) => {
     // Upload vers le bucket generated-images
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from('generated-images')
-      .upload(filePath, imageBuffer, {
+      .upload(filePath, imageUint8, {
         contentType: mimeType,
         cacheControl: '3600',
         upsert: false
