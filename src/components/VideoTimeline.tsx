@@ -973,20 +973,20 @@ const stopAnimations = useCallback(() => {
   };
 
   return (
-    <Card className="space-y-6 rounded-3xl border border-border/60 bg-card/80 p-6">
+    <Card className="space-y-6 rounded-3xl border border-primary/10 bg-gradient-to-br from-card via-card/95 to-card/90 p-6 shadow-lg shadow-primary/5">
       <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <p className="text-xs uppercase tracking-wide text-muted-foreground">Timeline</p>
-          <h3 className="text-xl font-semibold text-foreground">
+          <p className="text-xs uppercase tracking-widest text-muted-foreground font-semibold">Timeline</p>
+          <h3 className="text-2xl font-bold text-foreground mt-1">
             {scenes.length ? `${scenes.length} scène${scenes.length > 1 ? "s" : ""}` : "Aucune scène"}
           </h3>
         </div>
-        <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-          <Badge variant="outline" className="gap-1 border-primary/40 text-primary">
-            <Sparkles className="h-3 w-3" />
-            Playback ready
+        <div className="flex flex-wrap items-center gap-3 text-xs">
+          <Badge className="gap-1.5 border-primary/30 bg-primary/10 text-primary hover:bg-primary/15 transition-colors">
+            <Sparkles className="h-3.5 w-3.5" />
+            Prêt à lire
           </Badge>
-          <div className="rounded-full border border-border/60 px-3 py-1 font-medium text-foreground">
+          <div className="rounded-full border border-primary/20 bg-gradient-to-r from-primary/5 to-transparent px-4 py-2 font-semibold text-foreground shadow-sm shadow-primary/10">
             {formatTime(playheadTime)} / {formatTime(safeDuration)}
           </div>
           {onDownloadAssets ? (
@@ -995,13 +995,13 @@ const stopAnimations = useCallback(() => {
               size="sm"
               onClick={onDownloadAssets}
               disabled={isDownloadDisabled}
-              className="gap-2 text-xs"
+              className="gap-2 text-xs bg-primary/5 hover:bg-primary/10 border-primary/20 transition-colors"
             >
               <Download className="h-3.5 w-3.5" />
-              Télécharger (ZIP)
+              Télécharger
             </Button>
           ) : (
-            <span className="hidden sm:block">Sélectionnez une scène pour la prévisualiser.</span>
+            <span className="hidden sm:block text-muted-foreground">Sélectionnez une scène pour prévisualiser.</span>
           )}
         </div>
       </header>
@@ -1009,35 +1009,35 @@ const stopAnimations = useCallback(() => {
       <div className="space-y-4">
         <div
           ref={timelineScrollRef}
-          className="relative overflow-x-auto rounded-2xl border border-border/60 bg-background/70"
+          className="relative overflow-x-auto rounded-2xl border border-primary/15 bg-gradient-to-b from-background/80 to-background/60 shadow-lg shadow-primary/10"
         >
           <div className="relative" style={{ width: timelineWidthPx }}>
             <div
-              className="relative h-14 border-b border-border/50 bg-background/90 cursor-pointer"
+              className="relative h-16 border-b border-primary/20 bg-gradient-to-b from-background/95 to-background/80 cursor-pointer hover:bg-gradient-to-b hover:from-primary/5 hover:to-background/80 transition-colors"
               onMouseDownCapture={handleTimelineSeek}
             >
               {ticks.map((tick, index) => (
                 <div
                   key={`${tick}-${index}`}
                   className={cn(
-                    "absolute top-0 flex flex-col items-center text-[11px] text-muted-foreground",
+                    "absolute top-0 flex flex-col items-center text-[11px] text-muted-foreground/70 hover:text-primary/70 transition-colors",
                     tick !== 0 && "-translate-x-1/2"
                   )}
                   style={{ left: Math.round(tick * PIXELS_PER_SECOND) }}
                 >
-                  <div className="h-3 w-[1px] bg-border/70" />
-                  <span className="mt-1">{formatTime(tick)}</span>
+                  <div className="h-3 w-[1px] bg-gradient-to-b from-primary/40 to-primary/10" />
+                  <span className="mt-1 font-medium">{formatTime(tick)}</span>
                 </div>
               ))}
             </div>
 
             <div className="space-y-6 px-5 py-6">
               <div className="space-y-2">
-                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  <Volume2 className="h-3.5 w-3.5" />
-                  Audio
+                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-primary/80">
+                  <Volume2 className="h-4 w-4" />
+                  Narration
                 </div>
-                <div className="relative h-16 rounded-xl border border-border/60 bg-background/80">
+                <div className="relative h-20 rounded-xl border border-primary/20 bg-gradient-to-b from-emerald-500/5 via-background/80 to-background/60 shadow-sm shadow-emerald-500/10">
                   {normalizedAudioClips.length ? (
                     normalizedAudioClips.map((clip) => {
                       const left = Math.round(clip.start * PIXELS_PER_SECOND);
@@ -1049,22 +1049,22 @@ const stopAnimations = useCallback(() => {
                         <div
                           key={clip.id}
                           className={cn(
-                            "absolute top-1 bottom-1 flex min-w-[96px] flex-col justify-between rounded-lg border px-3 py-2 shadow-sm",
+                            "absolute top-1 bottom-1 flex min-w-[96px] flex-col justify-between rounded-lg border px-3 py-2 shadow-md hover:shadow-lg transition-shadow",
                             clip.accentClassName
                           )}
                           style={{ left, width: safeWidth }}
                         >
-                          <div className="flex items-center justify-between gap-2 text-[11px] font-medium">
+                          <div className="flex items-center justify-between gap-2 text-[11px] font-semibold">
                             <span className="truncate">{clip.label}</span>
-                            <span className="text-[10px] text-muted-foreground">
+                            <span className="text-[10px] text-foreground/60">
                               {formatTime(clip.start)} - {formatTime(clip.start + clip.duration)}
                             </span>
                           </div>
-                          <div className="flex h-6 items-end gap-[2px] text-primary">
+                          <div className="flex h-6 items-end gap-1 text-emerald-400">
                             {DEFAULT_WAVEFORM.map((height, index) => (
                               <span
                                 key={index}
-                                className="flex-1 rounded-full bg-current/50"
+                                className="flex-1 rounded-full bg-current/70 hover:bg-current transition-colors"
                                 style={{ height: `${height / 2}px` }}
                               />
                             ))}
@@ -1073,21 +1073,21 @@ const stopAnimations = useCallback(() => {
                       );
                     })
                   ) : (
-                    <div className="absolute inset-0 flex items-center justify-center gap-2 text-[11px] text-muted-foreground">
-                      <Plus className="h-3 w-3" />
-                      Ajoutez un clip audio (prochainement ElevenLabs)
+                    <div className="absolute inset-0 flex items-center justify-center gap-2 text-[11px] text-muted-foreground/60">
+                      <Volume2 className="h-3 w-3" />
+                      Narration ElevenLabs générée
                     </div>
                   )}
                 </div>
               </div>
 
               <div className="space-y-2">
-                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  <Clapperboard className="h-3.5 w-3.5" />
-                  Vidéo
+                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-primary/80">
+                  <Clapperboard className="h-4 w-4" />
+                  Storyboard
                 </div>
                 <div
-                  className="relative h-32 rounded-xl border border-border/60 bg-background/80"
+                  className="relative h-40 rounded-xl border border-primary/20 bg-gradient-to-b from-primary/5 via-background/80 to-background/60 shadow-sm shadow-primary/10 hover:shadow-md transition-shadow"
                   onMouseDownCapture={handleTimelineSeek}
                 >
                   {timelineSegments.map((segment) => {
@@ -1103,14 +1103,14 @@ const stopAnimations = useCallback(() => {
                         onMouseDown={(event) => handleSegmentPress(segment, event)}
                         onClick={(event) => handleSegmentPress(segment, event)}
                         className={cn(
-                          "group absolute top-2 bottom-2 overflow-hidden rounded-xl border text-left shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70",
-                          isActive ? "ring-2 ring-primary/40" : "hover:border-primary/40 hover:shadow-primary/10",
+                          "group absolute top-3 bottom-3 overflow-hidden rounded-lg border-2 text-left shadow-md hover:shadow-lg transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70",
+                          isActive ? "ring-2 ring-primary/60 shadow-lg shadow-primary/30" : "hover:border-primary/50 hover:shadow-primary/20",
                           segmentBorderClasses[segment.status]
                         )}
                         style={{ left, width }}
                         aria-pressed={isActive}
                       >
-                        <div className="absolute inset-0 bg-gradient-to-br from-background/20 via-background/10 to-background/0" />
+                        <div className="absolute inset-0 bg-gradient-to-br from-white/5 via-transparent to-black/20" />
                         {segment.videoUrl ? (
                           <video
                             src={segment.videoUrl}
@@ -1165,7 +1165,7 @@ const stopAnimations = useCallback(() => {
 
             {timelineSegments.length > 0 && (
               <div
-                className="pointer-events-none absolute top-0 bottom-0 w-[2px] bg-gradient-to-b from-primary via-primary/70 to-transparent"
+                className="pointer-events-none absolute top-0 bottom-0 w-1 bg-gradient-to-b from-primary via-primary/80 to-primary/30 shadow-lg shadow-primary/40"
                 style={{ left: Math.max(playheadPosition, 0) }}
               />
             )}

@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Wand2, Check, Edit2, Loader2, Volume2, RefreshCw, Play } from "lucide-react";
+import { Wand2, Check, Loader2, Volume2, RefreshCw, Play } from "lucide-react";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useAuth } from "@/lib/use-auth";
 import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
@@ -194,8 +194,6 @@ const CreateVideo = () => {
   
   // Step 2: Script
   const [scriptData, setScriptData] = useState<ScriptData | null>(null);
-  const [editedScriptJson, setEditedScriptJson] = useState("");
-  const [isEditingScript, setIsEditingScript] = useState(false);
   
   // Step 3: Images
   const [generatedImages, setGeneratedImages] = useState<GeneratedImage[]>([]);
@@ -925,7 +923,6 @@ const CreateVideo = () => {
       }
 
       setScriptData(data.script);
-      setEditedScriptJson(JSON.stringify(data.script, null, 2));
       setCurrentStep('script');
       
       toast({
@@ -947,12 +944,7 @@ const CreateVideo = () => {
 
   const approveScript = async () => {
     try {
-      let finalScript = scriptData;
-      
-      if (isEditingScript) {
-        finalScript = JSON.parse(editedScriptJson);
-        setScriptData(finalScript);
-      }
+      const finalScript = scriptData;
 
       // Update existing project or create new one
       if (projectId) {
@@ -1735,24 +1727,11 @@ const CreateVideo = () => {
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h2 className="text-2xl font-semibold text-foreground">Révision du script</h2>
-                  <p className="text-sm text-muted-foreground">Modifiez le plan ou basculez en mode JSON pour un contrôle total.</p>
+                  <p className="text-sm text-muted-foreground">Modifiez votre narration scène par scène.</p>
                 </div>
-                <Button variant="outline" onClick={() => setIsEditingScript(!isEditingScript)} className="gap-2 text-sm">
-                  <Edit2 className="h-4 w-4" />
-                  {isEditingScript ? 'Voir le rendu' : 'Éditer en JSON'}
-                </Button>
               </div>
 
-              {isEditingScript ? (
-                <Textarea
-                  value={editedScriptJson}
-                  onChange={(event) => setEditedScriptJson(event.target.value)}
-                  rows={18}
-                  className="rounded-xl border border-white/10 bg-black/20 font-mono text-xs backdrop-blur"
-                />
-              ) : (
-                renderScriptPreview()
-              )}
+              {renderScriptPreview()}
 
               <div className="flex flex-col gap-3 sm:flex-row">
                 <Button variant="ghost" onClick={() => setCurrentStep('topic')} className="flex-1">
