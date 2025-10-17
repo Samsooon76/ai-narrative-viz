@@ -709,39 +709,45 @@ const CreateVideo = () => {
           const restoredDurations: Record<number, number> = {};
           const restoredVoiceData: Record<number, SceneVoiceRecord> = {};
           const restoredStatus: Record<number, 'idle' | 'loading' | 'success' | 'error'> = {};
+          let hasRestoredVoices = false;
 
           Object.entries(rawVoiceData as Record<string, SceneVoiceRecord | { audioBase64?: string; voiceId?: string; duration?: number }>)
             .forEach(([sceneNumberStr, value]) => {
               const sceneNumber = Number(sceneNumberStr);
               if (!Number.isInteger(sceneNumber)) return;
               const record = value as Partial<SceneVoiceRecord> & { audioBase64?: string };
-              if (!record?.audioBase64) return;
+              if (!record?.audioBase64) {
+                console.warn('Voix scène', sceneNumber, ': audioBase64 manquant');
+                return;
+              }
 
               try {
                 const blob = base64ToBlob(record.audioBase64);
                 const objectUrl = URL.createObjectURL(blob);
                 restoredUrls[sceneNumber] = objectUrl;
                 restoredDurations[sceneNumber] =
-                  typeof record.duration === 'number' && record.duration > 0 ? record.duration : estimatedSceneDuration;
+                  typeof record.duration === 'number' && record.duration > 0 ? record.duration : 8;
                 restoredVoiceData[sceneNumber] = {
-                  voiceId: record.voiceId ?? selectedVoiceId ?? "",
+                  voiceId: record.voiceId ?? "",
                   audioBase64: record.audioBase64,
                   duration: restoredDurations[sceneNumber],
                 };
                 restoredStatus[sceneNumber] = 'success';
+                hasRestoredVoices = true;
+                console.log('✓ Voix restaurée scène', sceneNumber);
               } catch (voiceError) {
-                console.error('Erreur restauration audio scène', sceneNumber, voiceError);
+                console.error('✗ Erreur restauration audio scène', sceneNumber, voiceError);
+                restoredStatus[sceneNumber] = 'error';
               }
             });
 
-          if (Object.keys(restoredUrls).length > 0) {
-            setSceneAudioUrls((prev) => {
-              Object.values(prev).forEach((url) => URL.revokeObjectURL(url));
-              return restoredUrls;
-            });
+          if (hasRestoredVoices) {
+            setSceneAudioUrls(restoredUrls);
             setSceneAudioDurations(restoredDurations);
             setSceneVoiceData(restoredVoiceData);
-            setSceneVoiceStatus((prev) => ({ ...prev, ...restoredStatus }));
+            setSceneVoiceStatus(restoredStatus);
+
+            // Set selected voice from restored data if not already set
             if (!selectedVoiceId) {
               const firstRecord = Object.values(restoredVoiceData)[0];
               if (firstRecord?.voiceId) {
@@ -834,7 +840,6 @@ const CreateVideo = () => {
           : data.script;
 
         setScriptData(parsedScript);
-        setEditedScriptJson(JSON.stringify(parsedScript, null, 2));
         setCurrentStep('script');
       }
 

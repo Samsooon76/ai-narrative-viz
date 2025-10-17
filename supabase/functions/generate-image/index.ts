@@ -6,17 +6,22 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
+  console.log('=== generate-image called ===');
+  console.log('Method:', req.method);
+
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
+    console.log('Parsing request body...');
     const {
       prompt,
       sceneTitle,
       styleId,
       stylePrompt,
     } = await req.json();
+    console.log('Request parsed successfully');
     
     if (!prompt) {
       return new Response(
@@ -68,7 +73,8 @@ serve(async (req) => {
       'Content-Type': 'application/json',
     };
 
-    const response = await fetch(
+    // Envoyer la requête à la queue
+    const initialResponse = await fetch(
       'https://queue.fal.run/fal-ai/minimax/image-01',
       {
         method: 'POST',
@@ -81,10 +87,10 @@ serve(async (req) => {
       },
     );
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Erreur API Minimax:', response.status, errorText);
-      let reason = `Minimax error ${response.status}`;
+    if (!initialResponse.ok) {
+      const errorText = await initialResponse.text();
+      console.error('Erreur API Minimax:', initialResponse.status, errorText);
+      let reason = `Minimax error ${initialResponse.status}`;
       try {
         const parsed = JSON.parse(errorText);
         const message = parsed?.error?.message || parsed?.message || parsed?.error || parsed;
@@ -99,17 +105,80 @@ serve(async (req) => {
       throw new Error(reason);
     }
 
-    const data = await response.json() as { images?: Array<{ url?: string; content_type?: string }> };
-    const images = data?.images ?? [];
+    const queueData = await initialResponse.json() as {
+      status?: string;
+      request_id?: string;
+      status_url?: string;
+    };
+
+    console.log('Requête mise en queue:', queueData.request_id, 'Status:', queueData.status);
+
+    if (!queueData.status_url) {
+      console.error('Réponse queue:', JSON.stringify(queueData, null, 2));
+      throw new Error('Pas de status_url retourné par Minimax');
+    }
+
+    // Attendre que l'image soit générée (polling)
+    let finalData: any = null;
+    let attempts = 0;
+    const maxAttempts = 120; // 2 minutes avec 1s entre chaque
+
+    while (attempts < maxAttempts) {
+      attempts++;
+
+      const statusResponse = await fetch(queueData.status_url, {
+        method: 'GET',
+        headers: falHeaders,
+      });
+
+      if (!statusResponse.ok) {
+        console.error('Erreur récupération status:', statusResponse.status);
+        throw new Error(`Erreur lors du polling du statut: ${statusResponse.status}`);
+      }
+
+      finalData = await statusResponse.json();
+      console.log(`[Tentative ${attempts}] Status: ${finalData.status}`);
+
+      if (finalData.status === 'COMPLETED') {
+        console.log('Image générée avec succès!');
+        break;
+      }
+
+      if (finalData.status === 'FAILED') {
+        throw new Error(`Génération échouée: ${JSON.stringify(finalData.error || 'Erreur inconnue')}`);
+      }
+
+      // Attendre 1 seconde avant de retenter
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+
+    if (!finalData || finalData.status !== 'COMPLETED') {
+      throw new Error('Timeout: la génération a pris trop longtemps');
+    }
+
+    console.log('Récupération de la réponse complète depuis response_url...');
+    const resultResponse = await fetch(finalData.response_url, {
+      method: 'GET',
+      headers: falHeaders,
+    });
+
+    if (!resultResponse.ok) {
+      throw new Error(`Erreur récupération résultat: ${resultResponse.status}`);
+    }
+
+    const resultData = await resultResponse.json();
+    console.log('Résultat complet:', JSON.stringify(resultData, null, 2));
+
+    const images = resultData?.images ?? [];
     const firstImage = images[0];
 
     if (!firstImage?.url) {
-      console.error('Structure de la réponse Minimax:', JSON.stringify(data, null, 2));
+      console.error('Structure de la réponse Minimax:', JSON.stringify(resultData, null, 2));
       throw new Error('Aucune image générée par Minimax');
     }
 
     const imageUrl = firstImage.url;
-    const mimeType = firstImage.content_type ?? 'image/png';
+    const mimeType = firstImage.content_type ?? 'image/jpeg';
 
     // Récupérer l'image depuis l'URL fournie par Minimax
     console.log('Téléchargement de l\'image depuis Minimax...');
@@ -162,9 +231,11 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('Erreur dans generate-image:', error);
+    console.error('Stack trace:', error instanceof Error ? error.stack : 'N/A');
     const errorMessage = error instanceof Error ? error.message : 'Erreur interne';
+    console.error('Message final:', errorMessage);
     return new Response(
-      JSON.stringify({ error: errorMessage }),
+      JSON.stringify({ error: errorMessage, details: String(error) }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }

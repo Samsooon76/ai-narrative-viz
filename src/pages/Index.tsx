@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Wand2, Zap, Users, ArrowRight, Play, ChevronDown, Sparkles, Bot, Clapperboard, Rocket } from "lucide-react";
 import { Link, Navigate } from "react-router-dom";
 import { useAuth } from "@/lib/use-auth";
+import { useAuthModal } from "@/lib/auth-modal-context";
 import { motion } from "framer-motion";
 import { useInView } from "framer-motion";
 import { useRef, useEffect, useState, useCallback } from "react";
@@ -235,6 +236,7 @@ const MasonryGrid = ({
 
 const Index = () => {
   const { user } = useAuth();
+  const { openModal } = useAuthModal();
   const heroRef = useRef(null);
   const featuresRef = useRef(null);
   const ctaRef = useRef(null);
@@ -343,19 +345,33 @@ const Index = () => {
                 transition={{ duration: 0.8, delay: 0.5 }}
                 className="flex flex-col gap-4 sm:flex-row sm:justify-center"
               >
-                <Link to={user ? "/create" : "/auth"}>
-                  <Button size="lg" className="h-14 gap-3 px-8 text-lg font-semibold rounded-full bg-gradient-to-r from-primary to-accent hover:opacity-90 shadow-lg">
-                    <Play className="h-5 w-5" />
-                    {user ? "Ouvrir le studio" : "Commencer gratuitement"}
-                  </Button>
-                </Link>
-                {!user && (
-                  <Link to="/auth">
-                    <Button variant="outline" size="lg" className="h-14 gap-3 px-8 text-lg rounded-full">
-                      Se connecter
-                      <ArrowRight className="h-5 w-5" />
+                {user ? (
+                  <Link to="/create">
+                    <Button size="lg" className="h-14 gap-3 px-8 text-lg font-semibold rounded-full bg-gradient-to-r from-primary to-accent hover:opacity-90 shadow-lg">
+                      <Play className="h-5 w-5" />
+                      Ouvrir le studio
                     </Button>
                   </Link>
+                ) : (
+                  <Button
+                    size="lg"
+                    onClick={openModal}
+                    className="h-14 gap-3 px-8 text-lg font-semibold rounded-full bg-gradient-to-r from-primary to-accent hover:opacity-90 shadow-lg"
+                  >
+                    <Play className="h-5 w-5" />
+                    Commencer gratuitement
+                  </Button>
+                )}
+                {!user && (
+                  <Button
+                    variant="outline"
+                    size="lg"
+                    onClick={openModal}
+                    className="h-14 gap-3 px-8 text-lg rounded-full"
+                  >
+                    Se connecter
+                    <ArrowRight className="h-5 w-5" />
+                  </Button>
                 )}
               </motion.div>
 
@@ -466,12 +482,23 @@ const Index = () => {
                   </p>
 
                   <div className="flex flex-col gap-4 sm:flex-row sm:justify-center">
-                    <Link to={user ? "/create" : "/auth"}>
-                      <Button size="lg" className="h-14 gap-3 px-8 text-lg font-semibold rounded-full bg-gradient-to-r from-primary to-accent hover:opacity-90 shadow-lg">
+                    {user ? (
+                      <Link to="/create">
+                        <Button size="lg" className="h-14 gap-3 px-8 text-lg font-semibold rounded-full bg-gradient-to-r from-primary to-accent hover:opacity-90 shadow-lg">
+                          <Play className="h-5 w-5" />
+                          Continuer
+                        </Button>
+                      </Link>
+                    ) : (
+                      <Button
+                        size="lg"
+                        onClick={openModal}
+                        className="h-14 gap-3 px-8 text-lg font-semibold rounded-full bg-gradient-to-r from-primary to-accent hover:opacity-90 shadow-lg"
+                      >
                         <Play className="h-5 w-5" />
-                        {user ? "Continuer" : "Créer mon compte"}
+                        Créer mon compte
                       </Button>
-                    </Link>
+                    )}
                     <Link to="/dashboard">
                       <Button variant="outline" size="lg" className="h-14 gap-3 px-8 text-lg rounded-full">
                         Voir les projets

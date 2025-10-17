@@ -78,37 +78,47 @@ Tu DOIS répondre UNIQUEMENT avec un objet JSON valide dans ce format exact:
 
       userPrompt = `Rédige une HISTOIRE dramatique en respectant le format et le rythme indiqués pour le sujet suivant: "${topic}"
 
+⚠️ CONTRAINTE MAJEURE SUR LE CONTENU:
+- La narration TOTALE (texte uniquement, excluant titles et descriptions visuelles) DOIT faire entre 190 et 210 mots EXACTEMENT
+- NE RÉVÈLE JAMAIS l'identité précise du personnage principal (utilise des pronoms, descriptions vagues, mystère)
+- NE RÉVÈLE JAMAIS l'action exacte qui a changé le monde jusqu'à la fin
+- Garde du SUSPENS et de l'INTRIGUE durant tout le script
+- Les révélations doivent être progressives et énigmatiques
+
 Suis EXACTEMENT cette structure en 7 parties:
 
 🟢 CONTEXTE (PARTIE 1)
 - Commence par la date et le lieu : "Nous sommes en [année]. [Ville ou pays]."
-- Présente les personnages et le décor en quelques lignes simples et factuelles
+- Présente les personnages et le décor sans révéler les détails cruciaux
 - Ajoute une norme culturelle ou historique choquante
 
 🔸 PETIT REVIREMENT (PARTIE 2)
 - Utilise une phrase de transition ("Et pendant un certain temps... cela a fonctionné.")
-- Ajoute une ou deux phrases montrant les premiers succès ou la montée de la tension
+- Montre une montée de la tension sans révéler vers où
+- Sème des indices énigmatiques
 
 ⚫ REVIREMENT DE SITUATION (PARTIE 3)
-- Montre ce qui a mal tourné
-- Ajoute une trahison, une ambition ou une lutte de pouvoir
-- Termine par un changement dramatique (exil, chute, tournant)
+- Montre ce qui a mal tourné DE FAÇON VAGUE
+- Utilise des allusions plutôt que des explications directes
+- Termine par un changement dramatique
 
 🟢 CONTEXTE (PARTIE 4)
-- Montre comment le personnage principal a réagi
-- Utilise des phrases d'action courtes
-- Mentionne une alliance importante si cela est pertinent
+- Montre comment le protagoniste mystérieux a réagi
+- Utilise des mouvements énigmatiques
+- Garde l'identité floue
 
 🔸 PETIT REVIREMENT (PARTIE 5)
-- Utilise une ligne de tension discrète
-- N'en dis pas trop : mouvement furtif ou préparatoire
+- Ligne de tension discrète
+- Un détail qui pourrait changer tout, mais sans révélation
 
 ⚫ CONSÉQUENCE FINALE (PARTIE 6)
-- Révèle l'événement majeur ou ses répercussions
-- Garde le mystère
+- Accumule la tension
+- L'action transformatrice commence à se dévoiler... partiellement
 
 🟡 RÉVÉLATION (PARTIE 7)
-- Punchline finale avec identité : "Et la [fille/l'homme/le lieu] qui a fait cela... était [nom]."
+- Punchline finale : Enfin révèle ce qui s'est VRAIMENT passé et qui l'a fait
+- Doit surprendre et captiver
+- Exemple: "Et celui qui a transformé l'histoire... était quelqu'un de complètement inattendu."
 
 Pour CHAQUE scène, crée une description visuelle ANIMABLE:
 - Inclus du mouvement et de l'action (personnages en mouvement, éléments dynamiques)
@@ -118,9 +128,11 @@ Pour CHAQUE scène, crée une description visuelle ANIMABLE:
 - Ajoute un champ "speech" avec une phrase courte prononcée (ton naturel, max 12 mots)
 - Ajoute un champ "audio_description" avec l'ambiance sonore (musique, foley, bruitages précis)
 
- Calcule le nombre optimal de scènes pour que la vidéo finale dure entre 60 et 90 secondes (en te basant sur ~5 secondes par scène) et ajuste la structure si le sujet nécessite plus ou moins de moments clés.
+Calcule le nombre optimal de scènes pour que la vidéo finale dure entre 60 et 90 secondes (en te basant sur ~5 secondes par scène) et ajuste la structure si le sujet nécessite plus ou moins de moments clés.
 
-IMPORTANT: Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
+IMPORTANT:
+- Compte les mots de narration et assure-toi qu'ils font entre 190 et 210 mots
+- Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
     } else if (type === 'prompts') {
       systemPrompt = `Tu es un expert en génération de prompts pour Midjourney. 
 Tu dois analyser un script vidéo et créer des prompts détaillés pour générer des images qui illustrent parfaitement chaque moment clé.

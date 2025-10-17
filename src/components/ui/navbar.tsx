@@ -1,14 +1,16 @@
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
-import { Video, LogOut, Power } from "lucide-react";
+import { Video, Power } from "lucide-react";
 import { Link, NavLink } from "react-router-dom";
 import { useAuth } from "@/lib/use-auth";
+import { useAuthModal } from "@/lib/auth-modal-context";
 import { useMemo } from "react";
 
 const navLinkBase = "rounded-full px-4 py-2 text-base font-semibold transition-colors";
 
 export const Navbar = () => {
   const { user, signOut } = useAuth();
+  const { openModal } = useAuthModal();
 
   const links = useMemo(
     () => [
@@ -54,7 +56,7 @@ export const Navbar = () => {
             <ThemeToggle className="flex" compact />
             {user ? (
               <>
-                <Link to="/dashboard">
+                <Link to="/account">
                   <Button size="sm" variant="ghost" className="hidden sm:inline-flex rounded-full px-4 text-sm font-semibold text-white hover:bg-white/10">
                     Mon espace
                   </Button>
@@ -69,11 +71,13 @@ export const Navbar = () => {
                 </button>
               </>
             ) : (
-              <Link to="/auth">
-                <Button size="sm" className="rounded-full px-5 text-sm font-semibold shadow-lg shadow-primary/25">
-                  Se connecter
-                </Button>
-              </Link>
+              <Button
+                size="sm"
+                onClick={openModal}
+                className="rounded-full px-5 text-sm font-semibold shadow-lg shadow-primary/25"
+              >
+                Se connecter
+              </Button>
             )}
           </div>
         </div>

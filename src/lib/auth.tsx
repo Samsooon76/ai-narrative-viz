@@ -113,6 +113,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         description: "Impossible de se déconnecter",
         variant: "destructive"
       });
+    } else {
+      // Redirect to landing page after successful logout
+      window.location.href = '/';
     }
   };
 

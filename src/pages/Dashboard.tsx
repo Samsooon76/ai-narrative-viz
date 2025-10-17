@@ -2,6 +2,15 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Plus, Video, Clock, Archive, Trash2, RefreshCw } from "lucide-react";
 import { Link, Navigate } from "react-router-dom";
 import { useAuth } from "@/lib/use-auth";
@@ -37,6 +46,9 @@ const Dashboard = () => {
   const { user, loading } = useAuth();
   const [projects, setProjects] = useState<VideoProject[]>([]);
   const [loadingProjects, setLoadingProjects] = useState(true);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [projectToDelete, setProjectToDelete] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const loadProjects = useCallback(async () => {
     const controller = new AbortController();
@@ -116,17 +128,22 @@ const Dashboard = () => {
     }
   }, [user, loadProjectsWithCache]);
 
-  const deleteProject = async (projectId: string) => {
+  const confirmDelete = async () => {
+    if (!projectToDelete) return;
+
+    setIsDeleting(true);
     try {
-      const { error } = await supabase.from("video_projects").delete().eq("id", projectId);
+      const { error } = await supabase.from("video_projects").delete().eq("id", projectToDelete);
 
       if (error) throw error;
 
-      setProjects(projects.filter(p => p.id !== projectId));
+      setProjects(projects.filter(p => p.id !== projectToDelete));
       toast({
         title: "Projet supprimé",
         description: "Le projet a été supprimé avec succès",
       });
+      setDeleteConfirmOpen(false);
+      setProjectToDelete(null);
     } catch (error) {
       console.error("Erreur suppression:", error);
       toast({
@@ -134,7 +151,14 @@ const Dashboard = () => {
         description: "Impossible de supprimer le projet",
         variant: "destructive",
       });
+    } finally {
+      setIsDeleting(false);
     }
+  };
+
+  const openDeleteConfirm = (projectId: string) => {
+    setProjectToDelete(projectId);
+    setDeleteConfirmOpen(true);
   };
 
   if (!loading && !user) {
@@ -269,7 +293,7 @@ const Dashboard = () => {
                     <Button
                       variant="ghost"
                       size="icon"
-                      onClick={() => deleteProject(project.id)}
+                      onClick={() => openDeleteConfirm(project.id)}
                       className="text-muted-foreground hover:text-destructive"
                       aria-label="Supprimer le projet"
                     >
@@ -331,6 +355,27 @@ const Dashboard = () => {
           </Card>
         </section>
       </div>
+
+      <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Supprimer ce projet ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Cette action est irréversible. Le projet sera définitivement supprimé.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="flex gap-3 justify-end">
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDelete}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting ? "Suppression..." : "Supprimer"}
+            </AlertDialogAction>
+          </div>
+        </AlertDialogContent>
+      </AlertDialog>
     </PageShell>
   );
 };
