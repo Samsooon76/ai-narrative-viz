@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from "react";
-import { Play, Pause, Volume2, VolumeX } from "lucide-react";
+import { Play, Pause, Volume2, VolumeX, Download, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface AudioPlayerProps {
   src: string;
   className?: string;
+  fileName?: string;
 }
+
+const SPEED_OPTIONS = [0.5, 0.75, 1, 1.25, 1.5, 2];
 
 const formatTime = (seconds: number): string => {
   if (!Number.isFinite(seconds)) return "0:00";
@@ -14,14 +17,17 @@ const formatTime = (seconds: number): string => {
   return `${mins}:${secs.toString().padStart(2, "0")}`;
 };
 
-export const AudioPlayer = ({ src, className }: AudioPlayerProps) => {
+export const AudioPlayer = ({ src, className, fileName }: AudioPlayerProps) => {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
+  const [playbackSpeed, setPlaybackSpeed] = useState(1);
+  const [showSpeedMenu, setShowSpeedMenu] = useState(false);
   const progressRef = useRef<HTMLDivElement>(null);
+  const speedMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -47,6 +53,41 @@ export const AudioPlayer = ({ src, className }: AudioPlayerProps) => {
       audioRef.current.volume = isMuted ? 0 : volume;
     }
   }, [volume, isMuted]);
+
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.playbackRate = playbackSpeed;
+    }
+  }, [playbackSpeed]);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (speedMenuRef.current && !speedMenuRef.current.contains(e.target as Node)) {
+        setShowSpeedMenu(false);
+      }
+    };
+    if (showSpeedMenu) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [showSpeedMenu]);
+
+  const handleDownload = async () => {
+    try {
+      const response = await fetch(src);
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = fileName || "audio.mp3";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Erreur téléchargement audio:", error);
+    }
+  };
 
   const togglePlay = () => {
     if (!audioRef.current) return;
@@ -110,6 +151,36 @@ export const AudioPlayer = ({ src, className }: AudioPlayerProps) => {
         {formatTime(duration)}
       </span>
 
+      {/* Speed Control */}
+      <div ref={speedMenuRef} className="relative">
+        <button
+          onClick={() => setShowSpeedMenu(!showSpeedMenu)}
+          className="flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold text-foreground/70 hover:text-foreground hover:bg-primary/10 transition-colors"
+        >
+          {playbackSpeed}x
+          <ChevronDown className={cn("h-3 w-3 transition-transform", showSpeedMenu && "rotate-180")} />
+        </button>
+        {showSpeedMenu && (
+          <div className="absolute bottom-full right-0 mb-2 bg-background border border-primary/20 rounded-lg shadow-lg overflow-hidden z-50">
+            {SPEED_OPTIONS.map((speed) => (
+              <button
+                key={speed}
+                onClick={() => {
+                  setPlaybackSpeed(speed);
+                  setShowSpeedMenu(false);
+                }}
+                className={cn(
+                  "block w-full px-4 py-2 text-xs font-medium text-left transition-colors hover:bg-primary/10",
+                  playbackSpeed === speed && "bg-primary/20 text-primary font-bold"
+                )}
+              >
+                {speed}x
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Volume Control */}
       <div className="flex items-center gap-2">
         <button
@@ -135,6 +206,15 @@ export const AudioPlayer = ({ src, className }: AudioPlayerProps) => {
           className="w-16 h-1 bg-gradient-to-r from-primary/30 to-accent/20 rounded-full appearance-none cursor-pointer accent-primary [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-gradient-to-br [&::-webkit-slider-thumb]:from-primary [&::-webkit-slider-thumb]:to-accent [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:shadow-md [&::-moz-range-thumb]:appearance-none [&::-moz-range-thumb]:w-3 [&::-moz-range-thumb]:h-3 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-gradient-to-br [&::-moz-range-thumb]:from-primary [&::-moz-range-thumb]:to-accent [&::-moz-range-thumb]:cursor-pointer [&::-moz-range-thumb]:shadow-md [&::-moz-range-thumb]:border-0"
         />
       </div>
+
+      {/* Download Button */}
+      <button
+        onClick={handleDownload}
+        className="text-foreground/60 hover:text-foreground hover:bg-primary/10 p-1.5 rounded-md transition-colors"
+        title="Télécharger l'audio"
+      >
+        <Download className="h-4 w-4" />
+      </button>
     </div>
   );
 };
