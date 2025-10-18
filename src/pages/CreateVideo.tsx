@@ -121,6 +121,8 @@ const FORCED_VOICES: { voice_id: string; name: string; language: string; preview
   { voice_id: "a5n9pJUnAhX4fn7lx3uo", name: "Marc", language: "Français" },
 ];
 
+const AUDIO_PLAYER_STYLE = "w-full rounded-lg bg-transparent text-foreground [&::-webkit-media-controls-panel]:bg-gradient-to-r [&::-webkit-media-controls-panel]:from-primary/10 [&::-webkit-media-controls-panel]:to-accent/5 [&::-webkit-media-controls-enclosure]:rounded-lg [&::-webkit-media-controls-play-button]:bg-gradient-to-r [&::-webkit-media-controls-play-button]:from-primary [&::-webkit-media-controls-play-button]:to-accent [&::-webkit-media-controls-play-button]:rounded-full [&::-webkit-media-controls-play-button]:scale-110 [&::-webkit-media-controls-play-button]:shadow-md [&::-webkit-media-controls-timeline]:bg-gradient-to-r [&::-webkit-media-controls-timeline]:from-primary/30 [&::-webkit-media-controls-timeline]:to-accent/20 [&::-webkit-media-controls-timeline]:accent-primary [&::-webkit-media-controls-current-time-display]:text-xs [&::-webkit-media-controls-time-remaining-display]:text-xs [&::-webkit-media-controls-mute-button]:text-foreground/70 hover:[&::-webkit-media-controls-mute-button]:text-foreground";
+
 const blobToBase64 = async (blob: Blob): Promise<string> => {
   const arrayBuffer = await blob.arrayBuffer();
   let binary = "";
@@ -1524,11 +1526,11 @@ const CreateVideo = () => {
                 <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Aperçu de la voix</p>
                 <span className="text-xs text-muted-foreground/80">{selectedVoice.language ?? "Voix IA"}</span>
               </div>
-              <div className="rounded-xl border border-white/10 bg-black/40 p-3 shadow-[0_20px_60px_-40px_rgba(59,130,246,0.5)]">
+              <div className="rounded-xl border border-primary/20 bg-gradient-to-r from-primary/15 via-primary/5 to-transparent p-3 shadow-[0_25px_80px_-45px_rgba(37,99,235,0.55)]">
                 <audio
                   controls
                   src={selectedVoice.preview_url}
-                  className="w-full rounded-lg bg-transparent text-foreground [&::-webkit-media-controls-panel]:bg-transparent [&::-webkit-media-controls-enclosure]:rounded-lg [&::-webkit-media-controls-play-button]:bg-gradient-to-r [&::-webkit-media-controls-play-button]:from-primary [&::-webkit-media-controls-play-button]:to-accent [&::-webkit-media-controls-play-button]:rounded-full [&::-webkit-media-controls-play-button]:scale-125 [&::-webkit-media-controls-timeline]:accent-primary [&::-webkit-media-controls-current-time-display]:text-xs [&::-webkit-media-controls-time-remaining-display]:text-xs"
+                  className={AUDIO_PLAYER_STYLE}
                 />
               </div>
             </div>
@@ -1597,7 +1599,7 @@ const CreateVideo = () => {
                       <audio
                         controls
                         src={sceneAudioUrls[scene.scene_number]}
-                        className="w-full rounded-lg bg-transparent text-foreground [&::-webkit-media-controls-panel]:bg-transparent [&::-webkit-media-controls-enclosure]:rounded-lg [&::-webkit-media-controls-play-button]:bg-gradient-to-r [&::-webkit-media-controls-play-button]:from-primary [&::-webkit-media-controls-play-button]:to-accent [&::-webkit-media-controls-play-button]:rounded-full [&::-webkit-media-controls-play-button]:scale-[1.15] [&::-webkit-media-controls-timeline]:accent-accent [&::-webkit-media-controls-current-time-display]:text-[11px] [&::-webkit-media-controls-time-remaining-display]:text-[11px]"
+                        className={AUDIO_PLAYER_STYLE}
                       />
                     </div>
                   )}
