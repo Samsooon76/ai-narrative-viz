@@ -48,7 +48,6 @@ serve(async (req) => {
         },
         output_format: {
           container: 'wav',
-          encoding: 'pcm',
           sample_rate: 16000,
         },
       }),
