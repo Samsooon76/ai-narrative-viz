@@ -16,7 +16,7 @@ const pricingTiers = [
     features: [
       "10 vidéos/mois",
       "Génération de scripts IA",
-      "Voix ElevenLabs intégrée",
+      "Voix Cartesia TTS",
       "Exports vidéo haute qualité",
       "Bibliothèque de templates",
       "Support par email",

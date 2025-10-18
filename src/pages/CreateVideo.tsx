@@ -117,10 +117,9 @@ type VoiceClip = {
   accentClassName?: string;
 };
 
-const FORCED_VOICES: { voice_id: string; name: string; language: string; preview_url?: string | null }[] = [
-  { voice_id: "aQROLel5sQbj1vuIVi6B", name: "Élénore", language: "Français" },
-  { voice_id: "a5n9pJUnAhX4fn7lx3uo", name: "Marc", language: "Français" },
-];
+// Cartesia TTS Configuration
+const CARTESIA_VOICE_ID = "bd94e5a0-2b7a-4762-9b91-6eac6342f852";
+const CARTESIA_MODEL = "sonic-english";
 
 const blobToBase64 = async (blob: Blob): Promise<string> => {
   const arrayBuffer = await blob.arrayBuffer();
@@ -286,7 +285,7 @@ const CreateVideo = () => {
       });
     });
     return clips;
-  }, [scriptData, sceneAudioUrls, sceneAudioDurations, estimatedSceneDuration, sceneVoiceData, voiceOptions, sceneAudioSpeeds, sceneAudioClipEdits, sceneCustomDurations];
+  }, [scriptData, sceneAudioUrls, sceneAudioDurations, estimatedSceneDuration, sceneVoiceData, voiceOptions, sceneAudioSpeeds, sceneAudioClipEdits, sceneCustomDurations]);
 
 
   const selectedVoice = useMemo(() => {
@@ -319,89 +318,25 @@ const CreateVideo = () => {
   }, [projectId, sceneAudioClipEdits, sceneCustomDurations]);
 
   const loadVoices = useCallback(async () => {
-    const apiKey = import.meta.env.VITE_ELEVENLABS_API_KEY;
+    const apiKey = import.meta.env.VITE_CARTESIA_API_KEY;
     if (!apiKey) {
-      setVoicesError("Configurez la clé ElevenLabs (VITE_ELEVENLABS_API_KEY) pour activer la génération vocale.");
+      setVoicesError("Configurez la clé Cartesia (VITE_CARTESIA_API_KEY) pour activer la génération vocale.");
       setVoiceOptions([]);
       setSelectedVoiceId(null);
       return;
     }
 
-    setVoicesLoading(true);
-    setVoicesError(null);
-
-    try {
-      const response = await fetch("https://api.elevenlabs.io/v1/voices", {
-        headers: {
-          "xi-api-key": apiKey,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`Erreur ElevenLabs ${response.status}`);
+    // Initialize with Cartesia voice
+    setVoiceOptions([
+      {
+        voice_id: CARTESIA_VOICE_ID,
+        name: "Cartesia Voice",
+        preview_url: null,
+        language: "English",
       }
-
-      const data = await response.json();
-      const voices = Array.isArray(data?.voices) ? data.voices : [];
-      const simplifiedVoices = voices
-        .map(
-          (voice: {
-            voice_id?: string;
-            name?: string;
-            preview_url?: string | null;
-            labels?: Record<string, string | null | undefined> | null;
-          }) => ({
-            voice_id: voice.voice_id ?? "",
-            name: voice.name ?? "Voix sans nom",
-            preview_url: voice.preview_url ?? null,
-            language:
-              typeof voice.labels?.language === "string"
-                ? voice.labels.language
-                : typeof voice.labels?.accent === "string"
-                  ? voice.labels.accent
-                  : null,
-          })
-        )
-        .filter((voice) => Boolean(voice.voice_id));
-
-      const mergedVoices = new Map<string, { voice_id: string; name: string; preview_url?: string | null; language?: string | null }>();
-      simplifiedVoices.forEach((voice) => {
-        mergedVoices.set(voice.voice_id, voice);
-      });
-
-      FORCED_VOICES.forEach((forced) => {
-        const existing = mergedVoices.get(forced.voice_id);
-        mergedVoices.set(forced.voice_id, {
-          voice_id: forced.voice_id,
-          name: existing?.name ?? forced.name,
-          preview_url: existing?.preview_url ?? forced.preview_url ?? null,
-          language: forced.language,
-        });
-      });
-
-      const mergedList = Array.from(mergedVoices.values());
-
-      const languageScore = (voice: { language?: string | null }) => {
-        const lang = voice.language?.toLowerCase() ?? "";
-        if (lang.includes("fr")) return 0;
-        if (lang.includes("english") || lang.includes("en")) return 1;
-        return 2;
-      };
-
-      mergedList.sort((a, b) => {
-        const scoreDiff = languageScore(a) - languageScore(b);
-        if (scoreDiff !== 0) return scoreDiff;
-        return a.name.localeCompare(b.name);
-      });
-
-      setVoiceOptions(mergedList);
-      setSelectedVoiceId((current) => current ?? mergedList[0]?.voice_id ?? null);
-    } catch (error) {
-      console.error("Erreur de récupération des voix ElevenLabs:", error);
-      setVoicesError(extractFunctionErrorMessage(error, "Impossible de charger les voix ElevenLabs"));
-    } finally {
-      setVoicesLoading(false);
-    }
+    ]);
+    setSelectedVoiceId(CARTESIA_VOICE_ID);
+    setVoicesError(null);
   }, []);
 
   useEffect(() => {
@@ -537,20 +472,12 @@ const CreateVideo = () => {
 
   const generateVoiceForScene = useCallback(
     async (scene: ScriptScene) => {
-      const apiKey = import.meta.env.VITE_ELEVENLABS_API_KEY;
+      const apiKey = import.meta.env.VITE_CARTESIA_API_KEY;
       if (!apiKey) {
         toast({
           title: "Configuration manquante",
-          description: "Ajoutez la clé ElevenLabs (VITE_ELEVENLABS_API_KEY) pour générer la voix.",
+          description: "Ajoutez la clé Cartesia (VITE_CARTESIA_API_KEY) pour générer la voix.",
           variant: "destructive",
-        });
-        return;
-      }
-
-      if (!selectedVoiceId) {
-        toast({
-          title: "Sélectionnez une voix",
-          description: "Choisissez une voix ElevenLabs avant de lancer la génération.",
         });
         return;
       }
@@ -568,25 +495,29 @@ const CreateVideo = () => {
       setSceneVoiceStatus((prev) => ({ ...prev, [scene.scene_number]: "loading" }));
 
       try {
-        const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${selectedVoiceId}`, {
+        const response = await fetch("https://api.cartesia.ai/tts/bytes", {
           method: "POST",
           headers: {
-            "xi-api-key": apiKey,
+            "X-API-Key": apiKey,
             "Content-Type": "application/json",
-            Accept: "audio/mpeg",
+            Accept: "audio/wav",
           },
           body: JSON.stringify({
-            text: narrationText,
-            model_id: "eleven_flash_v2_5",
-            voice_settings: {
-              stability: 0.3,
-              similarity_boost: 0.75,
+            model_id: CARTESIA_MODEL,
+            transcript: narrationText,
+            voice_id: CARTESIA_VOICE_ID,
+            output_format: {
+              container: "wav",
+              encoding: "pcm",
+              sample_rate: 16000,
             },
           }),
         });
 
         if (!response.ok) {
-          throw new Error(`Erreur ElevenLabs ${response.status}`);
+          const errorText = await response.text();
+          console.error("Cartesia API error:", errorText);
+          throw new Error(`Erreur Cartesia ${response.status}`);
         }
 
         const audioBlob = await response.blob();
@@ -612,7 +543,7 @@ const CreateVideo = () => {
             const next = {
               ...prev,
               [scene.scene_number]: {
-                voiceId: selectedVoiceId,
+                voiceId: CARTESIA_VOICE_ID,
                 audioBase64: base64Audio,
                 duration,
               },
@@ -646,19 +577,19 @@ const CreateVideo = () => {
 
         toast({
           title: "Voix générée",
-          description: `Scène ${scene.scene_number} convertie avec la voix ${selectedVoice?.name ?? selectedVoiceId}.`,
+          description: `Scène ${scene.scene_number} convertie avec Cartesia.`,
         });
       } catch (error) {
-        console.error("Erreur génération voix ElevenLabs:", error);
+        console.error("Erreur génération voix Cartesia:", error);
         setSceneVoiceStatus((prev) => ({ ...prev, [scene.scene_number]: "error" }));
         toast({
-          title: "Erreur ElevenLabs",
+          title: "Erreur Cartesia",
           description: extractFunctionErrorMessage(error, "Impossible de générer la voix pour cette scène."),
           variant: "destructive",
         });
       }
     },
-    [selectedVoiceId, selectedVoice, toast, estimatedSceneDuration, persistVoiceData],
+    [toast, estimatedSceneDuration, persistVoiceData],
   );
 
   useEffect(() => {
@@ -1561,57 +1492,18 @@ const CreateVideo = () => {
         <div className="space-y-4 rounded-2xl border border-white/10 bg-black/30 p-4 backdrop-blur">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
-              <h4 className="text-lg font-semibold text-foreground">Choisissez une voix ElevenLabs</h4>
+              <h4 className="text-lg font-semibold text-foreground">Voix Cartesia TTS</h4>
               <p className="text-sm text-muted-foreground">
-                La narration générée ci-dessous sera envoyée à ElevenLabs avec la voix sélectionnée.
+                La narration sera générée avec Cartesia TTS.
               </p>
             </div>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              <Select
-                value={selectedVoiceId ?? undefined}
-                onValueChange={(value) => setSelectedVoiceId(value)}
-                disabled={voicesLoading || !voiceOptions.length}
-              >
-                <SelectTrigger className="w-64">
-                  <SelectValue placeholder={voicesLoading ? "Chargement des voix..." : "Sélectionner une voix"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {voiceOptions.map((voice) => (
-                    <SelectItem key={voice.voice_id} value={voice.voice_id}>
-                      <div className="flex flex-col">
-                        <span>{voice.name}</span>
-                        {voice.language && (
-                          <span className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground/80">
-                            {voice.language}
-                          </span>
-                        )}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button
-                type="button"
-                variant="outline"
-                className="gap-2"
-                onClick={() => loadVoices()}
-                disabled={voicesLoading}
-              >
-                {voicesLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                Rafraîchir
-              </Button>
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/10 border border-primary/20 text-sm font-medium text-foreground">
+                {selectedVoice?.name ?? "Cartesia Voice"}
+              </div>
             </div>
           </div>
           {voicesError && <p className="text-sm text-destructive">{voicesError}</p>}
-          {selectedVoice?.preview_url && (
-            <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-gradient-to-br from-primary/10 via-white/5 to-transparent p-4 backdrop-blur">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Aperçu de la voix</p>
-                <span className="text-xs text-muted-foreground/80">{selectedVoice.language ?? "Voix IA"}</span>
-              </div>
-              <AudioPlayer src={selectedVoice.preview_url} />
-            </div>
-          )}
         </div>
 
         <div className="space-y-4">
@@ -1684,7 +1576,7 @@ const CreateVideo = () => {
                     />
                   )}
                   {sceneVoiceStatus[scene.scene_number] === "error" && (
-                    <p className="text-xs text-destructive">Une erreur est survenue. Vérifiez votre clé API ElevenLabs et réessayez.</p>
+                    <p className="text-xs text-destructive">Une erreur est survenue. Vérifiez votre clé API Cartesia (VITE_CARTESIA_API_KEY) et réessayez.</p>
                   )}
                 </div>
               </div>

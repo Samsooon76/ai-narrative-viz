@@ -1132,7 +1132,7 @@ const stopAnimations = useCallback(() => {
                   ) : (
                     <div className="absolute inset-0 flex items-center justify-center gap-2 text-[11px] text-muted-foreground/60">
                       <Volume2 className="h-3 w-3" />
-                      Narration ElevenLabs générée
+                      Narration Cartesia générée
                     </div>
                   )}
                 </div>
