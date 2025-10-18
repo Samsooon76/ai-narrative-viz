@@ -36,6 +36,7 @@ serve(async (req) => {
       method: 'POST',
       headers: {
         'X-API-Key': CARTESIA_API_KEY,
+        'Cartesia-Version': '2025-04-16',
         'Content-Type': 'application/json',
         'Accept': 'audio/wav',
       },
