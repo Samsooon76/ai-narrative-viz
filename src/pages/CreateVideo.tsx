@@ -150,7 +150,6 @@ interface ScriptScene {
   visual: string;
   narration: string;
   duration_seconds?: number;
-  speech?: string;
   audio_description?: string;
 }
 
@@ -547,13 +546,13 @@ const CreateVideo = () => {
 
         toast({
           title: "Voix générée",
-          description: `Scène ${scene.scene_number} convertie avec Cartesia.`,
+          description: `Scène ${scene.scene_number} générée avec succès.`,
         });
       } catch (error) {
         console.error("Erreur génération voix Cartesia:", error);
         setSceneVoiceStatus((prev) => ({ ...prev, [scene.scene_number]: "error" }));
         toast({
-          title: "Erreur Cartesia",
+          title: "Erreur",
           description: extractFunctionErrorMessage(error, "Impossible de générer la voix pour cette scène."),
           variant: "destructive",
         });
@@ -561,6 +560,40 @@ const CreateVideo = () => {
     },
     [toast, estimatedSceneDuration, persistVoiceData],
   );
+
+  const generateAllVoices = useCallback(async () => {
+    if (!scriptData) return;
+
+    const voicesToGenerate = scriptData.scenes.filter(scene => !sceneAudioUrls[scene.scene_number]);
+
+    if (voicesToGenerate.length === 0) {
+      toast({
+        title: "Tous les audios générés",
+        description: "Toutes les scènes ont déjà une voix générée.",
+      });
+      return;
+    }
+
+    // Generate voices sequentially with 1 second delay between each call
+    for (let i = 0; i < voicesToGenerate.length; i++) {
+      if (i > 0) {
+        // Wait 1 second before next API call
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+      await generateVoiceForScene(voicesToGenerate[i]);
+    }
+
+    // Wait a moment for the last persistence to complete
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    // Final save to ensure all generated audios are persisted in database
+    await persistVoiceData(sceneVoiceDataRef.current);
+
+    toast({
+      title: "Génération terminée !",
+      description: `${voicesToGenerate.length} voix générées et enregistrées avec succès.`,
+    });
+  }, [scriptData, sceneAudioUrls, generateVoiceForScene, toast, persistVoiceData]);
 
   useEffect(() => {
     if (currentStep !== 'images') {
@@ -1459,21 +1492,30 @@ const CreateVideo = () => {
           </p>
         </div>
 
-        <div className="space-y-4 rounded-2xl border border-white/10 bg-black/30 p-4 backdrop-blur">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h4 className="text-lg font-semibold text-foreground">Voix Cartesia TTS</h4>
-              <p className="text-sm text-muted-foreground">
-                La narration sera générée avec Cartesia TTS.
-              </p>
-            </div>
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/10 border border-primary/20 text-sm font-medium text-foreground">
-                {selectedVoice?.name ?? "Cartesia Voice"}
-              </div>
-            </div>
-          </div>
-          {voicesError && <p className="text-sm text-destructive">{voicesError}</p>}
+        <div className="flex flex-col gap-2 rounded-lg border border-primary/20 bg-primary/5 p-4">
+          <Button
+            onClick={generateAllVoices}
+            disabled={Object.values(sceneVoiceStatus).some(status => status === 'loading') || !scriptData?.scenes.length}
+            className="gap-2 w-full"
+            size="lg"
+          >
+            {Object.values(sceneVoiceStatus).some(status => status === 'loading') ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Génération des voix en cours...
+              </>
+            ) : (
+              <>
+                <Wand2 className="h-4 w-4" />
+                Générer tous les audios ({scriptData?.scenes.length ?? 0} scènes)
+              </>
+            )}
+          </Button>
+          {Object.values(sceneVoiceStatus).filter(s => s === 'success').length > 0 && (
+            <p className="text-xs text-center text-emerald-400">
+              ✓ {Object.values(sceneVoiceStatus).filter(s => s === 'success').length}/{scriptData?.scenes.length} voix générées
+            </p>
+          )}
         </div>
 
         <div className="space-y-4">
@@ -1506,12 +1548,6 @@ const CreateVideo = () => {
                       className="mt-2 w-full resize-none rounded-lg border border-white/10 bg-black/30 text-sm backdrop-blur focus-visible:ring-1 focus-visible:ring-primary"
                     />
                   </div>
-                  {scene.speech && (
-                    <div>
-                      <span className="font-semibold text-emerald-500">DIALOGUE:</span>
-                      <p className="mt-1 italic">&ldquo;{scene.speech}&rdquo;</p>
-                    </div>
-                  )}
                 </div>
 
                 <div className="mt-4 space-y-3 rounded-xl border border-white/10 bg-black/20 p-4">
@@ -1546,7 +1582,7 @@ const CreateVideo = () => {
                     />
                   )}
                   {sceneVoiceStatus[scene.scene_number] === "error" && (
-                    <p className="text-xs text-destructive">Une erreur est survenue lors de la génération de la voix. Vérifiez la configuration Cartesia côté serveur et réessayez.</p>
+                    <p className="text-xs text-destructive">Une erreur est survenue lors de la génération de la voix. Vérifiez la configuration côté serveur et réessayez.</p>
                   )}
                 </div>
               </div>

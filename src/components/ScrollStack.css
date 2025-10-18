@@ -18,15 +18,15 @@
 }
 
 .scroll-stack-inner {
-  padding: 20vh 1.5rem 40rem;
+  padding: 20vh 1.5rem 50rem;
   min-height: 100vh;
 }
 
 .scroll-stack-window-wrapper .scroll-stack-inner {
-  padding: 25vh 0 45rem;
+  padding: 25vh 1.5rem 50rem;
 }
 
-/*. Cards start stacked; margin handled by ScrollStack logic */
+/* Cards in normal flow, will be animated */
 .scroll-stack-card {
   transform-origin: top center;
   will-change: transform, filter;
@@ -50,7 +50,7 @@
 
 @media (max-width: 768px) {
   .scroll-stack-inner {
-    padding: 15vh 1rem 30rem;
+    padding: 15vh 1rem 40rem;
   }
 
   .scroll-stack-card {

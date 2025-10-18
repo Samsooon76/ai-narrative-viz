@@ -75,7 +75,6 @@ Tu DOIS répondre UNIQUEMENT avec un objet JSON valide dans ce format exact:
       "duration_seconds": 4.2,
       "visual": "Description détaillée du visuel pour animation",
       "narration": "Texte de la narration",
-      "speech": "Phrase courte réellement prononcée dans la scène (max 12 mots)",
       "audio_description": "Ambiance sonore immersive (musique, effets, bruitages)"
     }
   ]
@@ -147,7 +146,6 @@ Pour CHAQUE scène, crée une description visuelle ANIMABLE:
 - Décris l'atmosphère et l'éclairage pour créer du drame
 - Ajoute des détails visuels captivants (expressions, gestes, environnement vivant)
 - Pense "cinéma" : cadrages, mouvements de caméra implicites
-- Ajoute un champ "speech" avec une phrase courte prononcée (ton naturel, max 12 mots)
 - Ajoute un champ "audio_description" avec l'ambiance sonore (musique, foley, bruitages précis)
 
 CALCUL TEMPOREL OBLIGATOIRE (À FAIRE AVANT DE RÉPONDRE):

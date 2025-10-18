@@ -6,7 +6,6 @@ import type { LucideIcon } from "lucide-react";
 import { Link, Navigate } from "react-router-dom";
 import Aurora from "@/components/Aurora";
 import { useAuth } from "@/lib/use-auth";
-import ScrollStack, { ScrollStackItem } from "@/components/ScrollStack";
 
 type HowItWorksStep = {
   icon: LucideIcon;
@@ -95,47 +94,43 @@ const HowItWorks = () => {
         </section>
 
         <section className="container px-4 pt-16">
-          <div className="mx-auto max-w-4xl">
-            <ScrollStack
-              useWindowScroll
-              itemDistance={-420}
-              itemStackDistance={36}
-              itemScale={0.04}
-              baseScale={0.82}
-              stackPosition="25%"
-              scaleEndPosition="15%"
-              className="scroll-stack-window-wrapper"
-            >
-              {HOW_IT_WORKS_STEPS.map((step, index) => (
-                <ScrollStackItem key={step.title} itemClassName="bg-white/6 border border-white/10 backdrop-blur-2xl">
-                  <div className="pointer-events-none absolute inset-0 rounded-[32px] bg-gradient-to-br from-white/12 via-white/5 to-transparent opacity-80" />
-                  <div className="pointer-events-none absolute inset-0 rounded-[32px] bg-gradient-to-br from-black/15 via-transparent to-black/15 opacity-55" />
-                  <div className="relative flex flex-col gap-8 md:flex-row md:items-start md:gap-12">
-                    <div className={`flex h-20 w-20 shrink-0 items-center justify-center rounded-3xl bg-gradient-to-br ${step.accent} text-white shadow-xl shadow-black/35`}>
-                      <step.icon className="h-10 w-10" />
-                    </div>
-                    <div className="flex-1 text-left">
-                      <div className="flex items-center gap-4 text-xs font-semibold uppercase tracking-[0.35em] text-primary/70">
-                        <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-primary/35 bg-primary/10 text-primary/80">
-                          {String(index + 1).padStart(2, "0")}
-                        </span>
-                        Étape {index + 1}
-                      </div>
-                      <h2 className="mt-6 text-3xl font-semibold text-foreground md:text-[34px]">{step.title}</h2>
-                      <p className="mt-4 text-base leading-relaxed text-muted-foreground/90">{step.description}</p>
-                      <ul className="mt-6 space-y-3 text-sm text-muted-foreground/80">
-                        {step.points.map((point) => (
-                          <li key={point} className="flex items-start gap-3">
-                            <span className="mt-2 h-2.5 w-2.5 rounded-full bg-primary/70 shadow-[0_0_0_4px_rgba(59,130,246,0.18)]" />
-                            <span>{point}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
+          <div className="mx-auto max-w-4xl space-y-8">
+            {HOW_IT_WORKS_STEPS.map((step, index) => (
+              <motion.div
+                key={step.title}
+                initial={{ opacity: 0, y: 40 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: "-100px" }}
+                transition={{ duration: 0.6, delay: index * 0.1 }}
+                className="relative flex flex-col gap-8 rounded-[32px] border border-white/10 bg-white/6 p-8 backdrop-blur-2xl md:flex-row md:items-start md:gap-12"
+              >
+                <div className="pointer-events-none absolute inset-0 rounded-[32px] bg-gradient-to-br from-white/12 via-white/5 to-transparent opacity-80" />
+                <div className="pointer-events-none absolute inset-0 rounded-[32px] bg-gradient-to-br from-black/15 via-transparent to-black/15 opacity-55" />
+                <div className="relative flex flex-col gap-8 md:flex-row md:items-start md:gap-12">
+                  <div className={`flex h-20 w-20 shrink-0 items-center justify-center rounded-3xl bg-gradient-to-br ${step.accent} text-white shadow-xl shadow-black/35`}>
+                    <step.icon className="h-10 w-10" />
                   </div>
-                </ScrollStackItem>
-              ))}
-            </ScrollStack>
+                  <div className="flex-1 text-left">
+                    <div className="flex items-center gap-4 text-xs font-semibold uppercase tracking-[0.35em] text-primary/70">
+                      <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-primary/35 bg-primary/10 text-primary/80">
+                        {String(index + 1).padStart(2, "0")}
+                      </span>
+                      Étape {index + 1}
+                    </div>
+                    <h2 className="mt-6 text-3xl font-semibold text-foreground md:text-[34px]">{step.title}</h2>
+                    <p className="mt-4 text-base leading-relaxed text-muted-foreground/90">{step.description}</p>
+                    <ul className="mt-6 space-y-3 text-sm text-muted-foreground/80">
+                      {step.points.map((point) => (
+                        <li key={point} className="flex items-start gap-3">
+                          <span className="mt-2 h-2.5 w-2.5 rounded-full bg-primary/70 shadow-[0_0_0_4px_rgba(59,130,246,0.18)]" />
+                          <span>{point}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              </motion.div>
+            ))}
           </div>
         </section>
 
