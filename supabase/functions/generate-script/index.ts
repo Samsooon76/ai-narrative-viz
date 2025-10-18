@@ -97,14 +97,13 @@ Tu DOIS répondre UNIQUEMENT avec un objet JSON valide dans ce format exact:
 
 🎬 CONTRAINTE MAJEURE SUR LA STRUCTURE TEMPORELLE (OBLIGATOIRE):
 - 🔴 GÉNÈRE ENTRE 15 ET 20 SCÈNES (répétition: c'est TRÈS important)
-- CHAQUE scène DOIT avoir une durée entre 2.0 et 5.5 secondes
+- 🔴 TIMING TTS: Le synthétiseur vocal parle à 3.2 mots/seconde
+- 🔴 CHAQUE scène DOIT avoir: duration_seconds = ROUNDUP(nombre_de_mots_narration / 3.2, 1 décimale)
 - La durée TOTALE de la vidéo DOIT être entre 60 et 90 secondes
-- Varie les durées (ex: 3.2s, 5.5s, 2.1s, 4.8s) pour un meilleur rythme cinématographique
-- Les scènes plus courtes (2-3s) = moments chocs, transitions rapides, suspense
-- Les scènes plus longues (4.5-5.5s) = révélations, développement d'ambiance, dialogues
-- IMPORTANT: La durée doit être COHÉRENTE avec le texte de narration (plus de texte = plus de temps)
-- Calcule: total_duration_seconds = somme(duration_seconds de toutes les scènes)
-- Ajoute un champ "scene_count": nombre exact de scènes
+- IMPORTANT: La durée de chaque scène DOIT correspondre au temps exact pour dire la narration à 3.2 mots/sec
+- IMPORTANT: Cela crée une synchronisation parfaite image-narration (pas de durée arbitraire)
+- Les scènes plus courtes (2-3s) = narrations concises, moments chocs, transitions rapides
+- Les scènes plus longues (4.5-5.5s) = narrations plus détaillées, révélations, développement
 
 Suis EXACTEMENT cette structure en 7 parties:
 
@@ -150,8 +149,12 @@ Pour CHAQUE scène, crée une description visuelle ANIMABLE:
 
 CALCUL TEMPOREL OBLIGATOIRE (À FAIRE AVANT DE RÉPONDRE):
 1. 🔴 Compte le nombre exact de scènes (DOIT être 15-20, sinon recommence)
-2. Attribue une durée_seconds à CHAQUE scène entre 2.0 et 5.5 secondes (varié)
-3. Calcule: SUM(duration_seconds) = somme de toutes les durées (DOIT être 60-90)
+2. 🔴 POUR CHAQUE SCÈNE:
+   a) Compte le nombre de MOTS dans la narration (excluant visual, audio_description)
+   b) Calcule: duration_seconds = ROUNDUP(nombre_de_mots / 3.2, 1 décimale)
+   c) Si duration_seconds < 2.0, ajoute du détail à la narration pour atteindre ~6.4 mots minimum (2.0s)
+   d) Si duration_seconds > 5.5, réduis la narration pour rester ≤ 17.6 mots (5.5s)
+3. Calcule: SUM(duration_seconds) = somme de toutes les durées calculées
 4. Insère dans le JSON:
    - "scene_count": nombre exact de scènes
    - "total_duration_seconds": somme exacte des durées
@@ -159,27 +162,47 @@ CALCUL TEMPOREL OBLIGATOIRE (À FAIRE AVANT DE RÉPONDRE):
 VÉRIFICATION FINALE (À FAIRE AVANT DE RÉPONDRE):
 - ❌ Si nombre de scènes < 15 ou > 20 → INVALIDE, recommence
 - ❌ Si une scène < 2.0s ou > 5.5s → INVALIDE, recommence
+- ❌ Si une durée ne correspond PAS à (mots_narration / 3.2) → INVALIDE, recommence
 - ❌ Si total < 60s ou > 90s → INVALIDE, recommence
 - ❌ Si mots de narration < 190 ou > 210 → INVALIDE, recommence
 
-EXEMPLE DE RÉPONSE VALIDE:
+EXEMPLE DE RÉPONSE VALIDE (avec calculs TTS 3.2 mots/sec):
 {
   "title": "Titre",
   "music": "Description",
   "scene_count": 17,
   "total_duration_seconds": 75.2,
   "scenes": [
-    {"scene_number": 1, "duration_seconds": 4.2, ...},
-    {"scene_number": 2, "duration_seconds": 3.1, ...},
-    ... (15 à 20 scènes total)
+    {
+      "scene_number": 1,
+      "title": "CONTEXTE",
+      "duration_seconds": 3.8,
+      "visual": "Description détaillée...",
+      "narration": "Nous sommes en 2087. Une ville futuriste s'étend.",
+      "audio_description": "Musique d'ambiance, bruits urbains"
+    },
+    {
+      "scene_number": 2,
+      "title": "RÉVÉLATION",
+      "duration_seconds": 4.4,
+      "visual": "Description détaillée...",
+      "narration": "Douze mots exactement. Douze mots pour faire une phrase de narration claire.",
+      "audio_description": "Sons dramatiques intensifiés"
+    }
   ]
 }
 
+EXPLICATION DES CALCULS POUR CES EXEMPLES:
+- Scène 1: "Nous sommes en 2087. Une ville futuriste s'étend." = 10 mots / 3.2 = 3.125 ≈ 3.2 (arrondi)
+- Scène 2: "Douze mots exactement. Douze mots pour faire une phrase de narration claire." = 14 mots / 3.2 = 4.375 ≈ 4.4 (arrondi)
+
 IMPORTANT - À RELIRE AVANT DE RÉPONDRE:
-- Compte les mots de narration: DOIT être 190-210
-- Compte les scènes: DOIT être 15-20 (PAS 12, PAS 25)
-- Vérifiez chaque durée: DOIT être 2.0-5.5
-- Vérifiez le total: DOIT être 60-90 secondes
+- 🔴 Compte les mots de narration: DOIT être 190-210
+- 🔴 Compte les scènes: DOIT être 15-20 (PAS 12, PAS 25)
+- 🔴 POUR CHAQUE SCÈNE: duration_seconds = MOTS_NARRATION / 3.2 (arrondi 1 décimale)
+- 🔴 Vérifiez chaque durée: DOIT être 2.0-5.5 (correspond aux mots de la narration)
+- 🔴 Vérifiez le total: DOIT être 60-90 secondes (= somme de toutes les durées calculées)
+- Le timing TTS (3.2 mots/sec) crée une synchronisation PARFAITE entre image et narration
 - Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
     } else if (type === 'prompts') {
       systemPrompt = `Tu es un expert en génération de prompts pour Midjourney. 
