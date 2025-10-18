@@ -318,15 +318,7 @@ const CreateVideo = () => {
   }, [projectId, sceneAudioClipEdits, sceneCustomDurations]);
 
   const loadVoices = useCallback(async () => {
-    const apiKey = import.meta.env.VITE_CARTESIA_API_KEY;
-    if (!apiKey) {
-      setVoicesError("Configurez la clé Cartesia (VITE_CARTESIA_API_KEY) pour activer la génération vocale.");
-      setVoiceOptions([]);
-      setSelectedVoiceId(null);
-      return;
-    }
-
-    // Initialize with Cartesia voice
+    // Initialize with Cartesia voice (API key is managed server-side)
     setVoiceOptions([
       {
         voice_id: CARTESIA_VOICE_ID,
@@ -472,16 +464,6 @@ const CreateVideo = () => {
 
   const generateVoiceForScene = useCallback(
     async (scene: ScriptScene) => {
-      const apiKey = import.meta.env.VITE_CARTESIA_API_KEY;
-      if (!apiKey) {
-        toast({
-          title: "Configuration manquante",
-          description: "Ajoutez la clé Cartesia (VITE_CARTESIA_API_KEY) pour générer la voix.",
-          variant: "destructive",
-        });
-        return;
-      }
-
       const narrationText = scene.narration?.trim();
       if (!narrationText) {
         toast({
@@ -495,33 +477,21 @@ const CreateVideo = () => {
       setSceneVoiceStatus((prev) => ({ ...prev, [scene.scene_number]: "loading" }));
 
       try {
-        const response = await fetch("https://api.cartesia.ai/tts/bytes", {
-          method: "POST",
-          headers: {
-            "X-API-Key": apiKey,
-            "Content-Type": "application/json",
-            Accept: "audio/wav",
-          },
-          body: JSON.stringify({
-            model_id: CARTESIA_MODEL,
-            transcript: narrationText,
-            voice_id: CARTESIA_VOICE_ID,
-            output_format: {
-              container: "wav",
-              encoding: "pcm",
-              sample_rate: 16000,
-            },
-          }),
+        // Call the edge function to generate voice securely
+        const { data, error } = await supabase.functions.invoke('generate-voice', {
+          body: { narration: narrationText }
         });
 
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.error("Cartesia API error:", errorText);
-          throw new Error(`Erreur Cartesia ${response.status}`);
+        if (error) {
+          throw error;
         }
 
-        const audioBlob = await response.blob();
-        const base64Audio = await blobToBase64(audioBlob);
+        if (!data || !data.audioBase64) {
+          throw new Error('Aucune audio générée par le serveur');
+        }
+
+        const base64Audio = data.audioBase64;
+        const audioBlob = base64ToBlob(base64Audio, 'audio/wav');
         const objectUrl = URL.createObjectURL(audioBlob);
 
         setSceneAudioUrls((prev) => {
@@ -1576,7 +1546,7 @@ const CreateVideo = () => {
                     />
                   )}
                   {sceneVoiceStatus[scene.scene_number] === "error" && (
-                    <p className="text-xs text-destructive">Une erreur est survenue. Vérifiez votre clé API Cartesia (VITE_CARTESIA_API_KEY) et réessayez.</p>
+                    <p className="text-xs text-destructive">Une erreur est survenue lors de la génération de la voix. Vérifiez la configuration Cartesia côté serveur et réessayez.</p>
                   )}
                 </div>
               </div>
