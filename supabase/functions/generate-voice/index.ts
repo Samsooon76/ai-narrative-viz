@@ -44,11 +44,16 @@ serve(async (req) => {
         model_id: CARTESIA_MODEL,
         transcript: narration.trim(),
         voice: {
+          mode: 'id',
           id: CARTESIA_VOICE_ID,
         },
         output_format: {
           container: 'wav',
+          encoding: 'pcm_f32le',
+          sample_rate: 44100,
         },
+        language: 'fr',
+        speed: 'normal',
       }),
     });
 
