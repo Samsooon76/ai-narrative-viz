@@ -6,6 +6,8 @@ interface AudioPlayerProps {
   src: string;
   className?: string;
   fileName?: string;
+  onSpeedChange?: (speed: number) => void;
+  initialSpeed?: number;
 }
 
 const SPEED_OPTIONS = [0.5, 0.75, 1, 1.25, 1.5, 2];
@@ -17,14 +19,14 @@ const formatTime = (seconds: number): string => {
   return `${mins}:${secs.toString().padStart(2, "0")}`;
 };
 
-export const AudioPlayer = ({ src, className, fileName }: AudioPlayerProps) => {
+export const AudioPlayer = ({ src, className, fileName, onSpeedChange, initialSpeed = 1 }: AudioPlayerProps) => {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
-  const [playbackSpeed, setPlaybackSpeed] = useState(1);
+  const [playbackSpeed, setPlaybackSpeed] = useState(initialSpeed);
   const [showSpeedMenu, setShowSpeedMenu] = useState(false);
   const progressRef = useRef<HTMLDivElement>(null);
   const speedMenuRef = useRef<HTMLDivElement>(null);
@@ -148,7 +150,7 @@ export const AudioPlayer = ({ src, className, fileName }: AudioPlayerProps) => {
 
       {/* Duration */}
       <span className="min-w-12 text-xs font-semibold text-foreground/80 text-right">
-        {formatTime(duration)}
+        {formatTime(duration / playbackSpeed)}
       </span>
 
       {/* Speed Control */}
@@ -167,6 +169,7 @@ export const AudioPlayer = ({ src, className, fileName }: AudioPlayerProps) => {
                 key={speed}
                 onClick={() => {
                   setPlaybackSpeed(speed);
+                  onSpeedChange?.(speed);
                   setShowSpeedMenu(false);
                 }}
                 className={cn(

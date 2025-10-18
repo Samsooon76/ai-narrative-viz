@@ -90,6 +90,8 @@ interface VideoTimelineProps {
   isDownloadDisabled?: boolean;
   onPlaybackControllerChange?: (controller: TimelinePlaybackController | null) => void;
   sceneVoiceData?: Record<number, SceneVoiceRecord>;
+  sceneAudioSpeeds?: Record<number, number>;
+  onAudioClipsChange?: (clips: Record<string, { start: number; duration: number }>) => void;
 }
 
 const statusTokens: Record<SceneStatus, { label: string; tone: "ready" | "pending" | "error" | "idle" }> = {
@@ -146,12 +148,16 @@ export const VideoTimeline = ({
   isDownloadDisabled,
   onPlaybackControllerChange,
   sceneVoiceData,
+  sceneAudioSpeeds,
+  onAudioClipsChange,
 }: VideoTimelineProps) => {
   const [activeScene, setActiveScene] = useState<number | null>(scenes[0]?.sceneNumber ?? null);
   const [playheadTime, setPlayheadTime] = useState(0);
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
   const isPreviewPlayingRef = useRef(false);
   const [pendingAutoPlay, setPendingAutoPlay] = useState(false);
+  const [editableAudioClips, setEditableAudioClips] = useState<Record<string, { start: number; duration: number }>>({});
+  const [draggedClip, setDraggedClip] = useState<{ id: string; type: 'move' | 'resize-start' | 'resize-end'; startX: number; startStart: number; startEnd: number } | null>(null);
 
   const timelineScrollRef = useRef<HTMLDivElement | null>(null);
   const playheadTimeRef = useRef(0);
@@ -231,12 +237,14 @@ export const VideoTimeline = ({
       // Priority: video duration > voice duration > scene duration > fallback
       const videoDuration = videoDurations[scene.sceneNumber];
       const voiceDuration = sceneVoiceData?.[scene.sceneNumber]?.duration;
+      const speed = sceneAudioSpeeds?.[scene.sceneNumber] ?? 1;
 
       let candidateDuration: number;
       if (typeof videoDuration === "number" && Number.isFinite(videoDuration) && videoDuration > 0) {
         candidateDuration = videoDuration;
       } else if (typeof voiceDuration === "number" && Number.isFinite(voiceDuration) && voiceDuration > 0) {
-        candidateDuration = voiceDuration;
+        // Adjust voice duration by playback speed
+        candidateDuration = voiceDuration / speed;
       } else {
         candidateDuration = scene.durationSeconds ?? fallbackDuration;
       }
@@ -253,7 +261,7 @@ export const VideoTimeline = ({
         end,
       };
     });
-  }, [sceneVoiceData, scenes, timelineDuration, videoDurations]);
+  }, [sceneVoiceData, scenes, timelineDuration, videoDurations, sceneAudioSpeeds]);
 
   const computedDuration = timelineSegments.length ? timelineSegments[timelineSegments.length - 1].end : 0;
   const totalDuration = Math.max(timelineDuration ?? 0, computedDuration);
@@ -311,10 +319,56 @@ const stopAnimations = useCallback(() => {
 
   useEffect(() => () => stopAnimations(), [stopAnimations]);
 
+  // Handle audio clip dragging and resizing
+  useEffect(() => {
+    if (!draggedClip || !timelineScrollRef.current) return;
+
+    // Disable text selection during drag
+    document.body.style.userSelect = 'none';
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const deltaX = e.clientX - draggedClip.startX;
+      const deltaSeconds = deltaX / PIXELS_PER_SECOND;
+
+      let newStart = draggedClip.startStart;
+      let newEnd = draggedClip.startEnd;
+
+      if (draggedClip.type === 'move') {
+        const duration = draggedClip.startEnd - draggedClip.startStart;
+        newStart = Math.max(0, draggedClip.startStart + deltaSeconds);
+        newStart = Math.min(newStart, safeDuration - duration);
+        newEnd = newStart + duration;
+      } else if (draggedClip.type === 'resize-start') {
+        newStart = Math.max(0, draggedClip.startStart + deltaSeconds);
+        newStart = Math.min(newStart, draggedClip.startEnd - 0.5);
+      } else if (draggedClip.type === 'resize-end') {
+        newEnd = Math.min(safeDuration, draggedClip.startEnd + deltaSeconds);
+        newEnd = Math.max(newEnd, draggedClip.startStart + 0.5);
+      }
+
+      const updated = { ...editableAudioClips };
+      updated[draggedClip.id] = { start: newStart, duration: newEnd - newStart };
+      setEditableAudioClips(updated);
+      onAudioClipsChange?.(updated);
+    };
+
+    const handleMouseUp = () => {
+      setDraggedClip(null);
+      document.body.style.userSelect = '';
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.userSelect = '';
+    };
+  }, [draggedClip, editableAudioClips, safeDuration, onAudioClipsChange]);
+
   const pauseNarration = useCallback(() => {
     const audio = narrationAudioRef.current;
     if (!audio) return;
-    console.log('[pauseNarration] Pausing narration audio, current scene:', currentAudioSceneRef.current);
     audio.pause();
   }, []);
 
@@ -329,19 +383,15 @@ const stopAnimations = useCallback(() => {
 
   const playNarrationForScene = useCallback(
     (sceneNumber: number | null, offsetSeconds = 0) => {
-      console.log('[playNarrationForScene] Called with scene:', sceneNumber, 'offset:', offsetSeconds);
 
       if (sceneNumber == null) {
-        console.log('[playNarrationForScene] No scene number, resetting narration');
         resetNarration();
         return;
       }
 
       const audioSrc = getSceneAudioSrc(sceneNumber);
-      console.log('[playNarrationForScene] Audio src for scene', sceneNumber, ':', audioSrc ? 'found' : 'NOT FOUND');
 
       if (!audioSrc) {
-        console.log('[playNarrationForScene] No audio source for scene', sceneNumber, '- continuing with existing audio');
         // Don't reset narration - let the existing audio continue playing
         // This handles the case where not all scenes have individual audio tracks
         return;
@@ -349,7 +399,6 @@ const stopAnimations = useCallback(() => {
 
       let audio = narrationAudioRef.current;
       if (!audio) {
-        console.log('[playNarrationForScene] Creating new Audio element');
         audio = new Audio();
         audio.preload = "auto";
         audio.crossOrigin = "anonymous";
@@ -363,11 +412,9 @@ const stopAnimations = useCallback(() => {
         !audio.paused &&
         Math.abs(audio.currentTime - offsetSeconds) < 0.05
       ) {
-        console.log('[playNarrationForScene] Audio already playing at correct position');
         return;
       }
 
-      console.log('[playNarrationForScene] Stopping current audio');
       stopNarrationAudio(false);
 
       const record = sceneVoiceData?.[sceneNumber];
@@ -380,25 +427,24 @@ const stopAnimations = useCallback(() => {
           ? Math.min(Math.max(offsetSeconds, 0), Math.max(effectiveDuration - 0.05, 0))
           : Math.max(offsetSeconds, 0);
 
-      console.log('[playNarrationForScene] Desired offset:', desiredOffset, 'effective duration:', effectiveDuration);
 
       const startPlayback = () => {
-        console.log('[playNarrationForScene] startPlayback called, audio.readyState:', audio.readyState);
         try {
           if (Math.abs(audio.currentTime - desiredOffset) > 0.05) {
-            console.log('[playNarrationForScene] Setting audio.currentTime to:', desiredOffset);
             audio.currentTime = desiredOffset;
           }
         } catch (err) {
           console.error('[playNarrationForScene] Error setting currentTime:', err);
         }
 
-        console.log('[playNarrationForScene] Calling audio.play()');
+        // Apply playback speed
+        const speed = sceneAudioSpeeds?.[sceneNumber] ?? 1;
+        audio.playbackRate = speed;
+
         const playPromise = audio.play();
         if (playPromise) {
           playPromise
             .then(() => {
-              console.log('[playNarrationForScene] Audio play succeeded');
             })
             .catch((err) => {
               console.error('[playNarrationForScene] Audio play failed:', err);
@@ -407,28 +453,23 @@ const stopAnimations = useCallback(() => {
       };
 
       if (audio.src !== audioSrc) {
-        console.log('[playNarrationForScene] Setting new audio src, waiting for loadeddata');
         audio.src = audioSrc;
         audio.addEventListener("loadeddata", startPlayback, { once: true });
       } else if (audio.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
-        console.log('[playNarrationForScene] Audio already loaded, starting playback immediately');
         startPlayback();
       } else {
-        console.log('[playNarrationForScene] Audio not loaded, waiting for loadeddata');
         audio.addEventListener("loadeddata", startPlayback, { once: true });
       }
 
       // Audio end should NOT trigger scene transitions
       // Scene transitions are handled by video end OR fallback timer
       audio.onended = () => {
-        console.log('[playNarrationForScene] Audio ended for scene', sceneNumber);
         currentAudioSceneRef.current = null;
       };
 
       currentAudioSceneRef.current = sceneNumber;
-      console.log('[playNarrationForScene] Set currentAudioSceneRef to:', sceneNumber);
     },
-    [getSceneAudioSrc, previewVideoRef, resetNarration, scenes, sceneVoiceData, stopNarrationAudio]
+    [getSceneAudioSrc, previewVideoRef, resetNarration, scenes, sceneVoiceData, sceneAudioSpeeds, stopNarrationAudio]
   );
 
   useEffect(
@@ -504,27 +545,21 @@ const stopAnimations = useCallback(() => {
   const segmentDuration = selectedSegment?.durationSeconds ?? DEFAULT_SCENE_DURATION;
 
   const advanceToNextSegment = useCallback(() => {
-    console.log('[advanceToNextSegment] Called, current scene:', selectedSceneNumber);
     if (selectedSceneNumber == null) {
-      console.log('[advanceToNextSegment] No current scene, returning');
       return;
     }
 
     const currentIndex = timelineSegments.findIndex((segment) => segment.sceneNumber === selectedSceneNumber);
-    console.log('[advanceToNextSegment] Current index:', currentIndex);
     if (currentIndex < 0) return;
 
     const nextSegment = timelineSegments[currentIndex + 1];
-    console.log('[advanceToNextSegment] Next segment:', nextSegment?.sceneNumber);
 
     if (!nextSegment) {
-      console.log('[advanceToNextSegment] No next segment, stopping playback');
       pauseNarration();
       setIsPreviewPlaying(false);
       return;
     }
 
-    console.log('[advanceToNextSegment] Transitioning to scene', nextSegment.sceneNumber, '- DO NOT PAUSE AUDIO');
     isTransitioningRef.current = true;
     setActiveScene(nextSegment.sceneNumber);
     updatePlayhead(nextSegment.start, "instant");
@@ -579,6 +614,7 @@ const stopAnimations = useCallback(() => {
     const step = () => {
       const audio = narrationAudioRef.current;
       const record = selectedSceneNumber != null ? sceneVoiceData?.[selectedSceneNumber] : null;
+      const speed = selectedSceneNumber != null ? sceneAudioSpeeds?.[selectedSceneNumber] ?? 1 : 1;
       const narrationActive =
         audio &&
         currentAudioSceneRef.current === selectedSceneNumber &&
@@ -591,9 +627,9 @@ const stopAnimations = useCallback(() => {
       if (narrationActive) {
         const durationFromRecord = record?.duration;
         if (durationFromRecord && Number.isFinite(durationFromRecord) && durationFromRecord > 0) {
-          effectiveDuration = durationFromRecord;
+          effectiveDuration = durationFromRecord / speed;
         } else if (Number.isFinite(audio.duration) && audio.duration > 0) {
-          effectiveDuration = audio.duration;
+          effectiveDuration = audio.duration / speed;
         }
         elapsed = audio.currentTime;
       } else {
@@ -618,6 +654,7 @@ const stopAnimations = useCallback(() => {
   }, [
     advanceToNextSegment,
     sceneVoiceData,
+    sceneAudioSpeeds,
     segmentDuration,
     selectedSceneNumber,
     selectedSegmentStart,
@@ -626,7 +663,6 @@ const stopAnimations = useCallback(() => {
   ]);
 
   const playPreview = useCallback(() => {
-    console.log('[playPreview] Called for scene', selectedScene?.sceneNumber);
     setPendingAutoPlay(false);
 
     const video = previewVideoRef?.current ?? null;
@@ -635,25 +671,20 @@ const stopAnimations = useCallback(() => {
     const segmentStart = selectedSegmentStart ?? 0;
     const currentOffset = Math.max(playheadTimeRef.current - segmentStart, 0);
 
-    console.log('[playPreview] hasVideo:', hasVideo, 'sceneNumber:', sceneNumber);
 
     if (hasVideo && video) {
-      console.log('[playPreview] Playing video for scene', sceneNumber);
       // Reset video to start
       video.currentTime = 0;
 
       // DON'T start narration here - let handlePlay event handler do it
       // This allows audio to continue seamlessly during scene transitions
-      console.log('[playPreview] Skipping audio start - will be handled by handlePlay event');
 
       // Start video playback
       const playNow = () => {
-        console.log('[playPreview] Starting video playback, readyState:', video.readyState);
         const playPromise = video.play();
         if (playPromise) {
           playPromise
             .then(() => {
-              console.log('[playPreview] Video play succeeded');
             })
             .catch((err) => {
               console.error('[playPreview] Video play failed:', err);
@@ -663,21 +694,17 @@ const stopAnimations = useCallback(() => {
       };
 
       if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
-        console.log('[playPreview] Video ready, playing immediately');
         playNow();
       } else {
-        console.log('[playPreview] Waiting for video to load, readyState:', video.readyState);
 
         // Use 'canplay' event which fires when enough data is loaded to start playback
         const handleCanPlay = () => {
-          console.log('[playPreview] canplay event fired, readyState:', video.readyState);
           video.removeEventListener("canplay", handleCanPlay);
           video.removeEventListener("loadeddata", handleLoadedData);
           playNow();
         };
 
         const handleLoadedData = () => {
-          console.log('[playPreview] loadeddata event fired, readyState:', video.readyState);
           video.removeEventListener("canplay", handleCanPlay);
           video.removeEventListener("loadeddata", handleLoadedData);
           playNow();
@@ -691,7 +718,6 @@ const stopAnimations = useCallback(() => {
     }
 
     // Fallback for scenes without video
-    console.log('[playPreview] No video, using fallback loop');
     setIsPreviewPlaying(true);
     playNarrationForScene(sceneNumber, currentOffset);
     runFallbackLoop();
@@ -713,12 +739,9 @@ const stopAnimations = useCallback(() => {
   }, [pauseNarration, previewVideoRef, selectedScene, setPendingAutoPlay, stopAnimations]);
 
   const togglePreview = useCallback(() => {
-    console.log('[togglePreview] Called');
     const video = previewVideoRef?.current ?? null;
-    console.log('[togglePreview] video:', !!video, 'selectedScene:', selectedScene?.sceneNumber, 'hasVideoUrl:', !!selectedScene?.videoUrl);
 
     if (selectedScene?.videoUrl && video) {
-      console.log('[togglePreview] Video mode, paused:', video.paused);
       if (video.paused) {
         playPreview();
       } else {
@@ -727,7 +750,6 @@ const stopAnimations = useCallback(() => {
       return;
     }
 
-    console.log('[togglePreview] Fallback mode, isPreviewPlaying:', isPreviewPlaying);
     if (isPreviewPlaying) {
       pausePreview();
     } else {
@@ -765,26 +787,20 @@ const stopAnimations = useCallback(() => {
     const video = previewVideoRef?.current;
     if (!video || !selectedScene?.videoUrl) return;
 
-    console.log('[VideoTimeline] Scene changed, forcing video load for scene', selectedScene.sceneNumber);
-    console.log('[VideoTimeline] Video readyState before load():', video.readyState);
 
     // Force the browser to load the video
     video.load();
 
-    console.log('[VideoTimeline] Video readyState after load():', video.readyState);
   }, [previewVideoRef, selectedScene?.sceneNumber, selectedScene?.videoUrl]);
 
   useEffect(() => {
-    console.log('[pendingAutoPlay effect] pendingAutoPlay:', pendingAutoPlay, 'selectedSegmentStart:', selectedSegmentStart);
     if (!pendingAutoPlay) return;
 
     if (selectedSegmentStart == null) {
-      console.log('[pendingAutoPlay effect] No segment start, canceling auto-play');
       setPendingAutoPlay(false);
       return;
     }
 
-    console.log('[pendingAutoPlay effect] Starting auto-play at', selectedSegmentStart);
     updatePlayhead(selectedSegmentStart, "instant");
     playPreview();
   }, [pendingAutoPlay, playPreview, selectedSegmentStart, setPendingAutoPlay, updatePlayhead]);
@@ -794,7 +810,6 @@ const stopAnimations = useCallback(() => {
     if (!video || selectedSegmentStart == null) return;
 
     const handlePlay = () => {
-      console.log('[VideoTimeline] handlePlay triggered, video.currentTime:', video.currentTime, 'activeScene:', activeScene);
       setIsPreviewPlaying(true);
       runVideoFrameLoop(video);
 
@@ -802,31 +817,24 @@ const stopAnimations = useCallback(() => {
       // Audio should continue from where it left off on the timeline
       const sceneNumber = selectedScene?.sceneNumber ?? null;
       const offset = selectedSegmentStart != null ? Math.max(playheadTimeRef.current - selectedSegmentStart, 0) : 0;
-      console.log('[VideoTimeline] handlePlay - sceneNumber:', sceneNumber, 'offset:', offset, 'playheadTime:', playheadTimeRef.current, 'segmentStart:', selectedSegmentStart, 'currentAudioScene:', currentAudioSceneRef.current);
 
       // Only start audio if we're at the beginning of the video or if audio isn't already playing
       const audio = narrationAudioRef.current;
       const audioPlaying = audio && !audio.paused;
 
-      console.log('[VideoTimeline] handlePlay - audio state: paused=', audio?.paused, 'currentAudioScene=', currentAudioSceneRef.current, 'sceneNumber=', sceneNumber, 'audioPlaying=', audioPlaying);
 
       if (!audioPlaying) {
         // No audio is playing, so start audio for this scene
-        console.log('[VideoTimeline] handlePlay - starting audio at offset:', offset);
         playNarrationForScene(sceneNumber, offset);
       } else if (currentAudioSceneRef.current !== sceneNumber) {
         // Audio is playing but for a different scene (e.g., continuing from previous scene)
         // This is OK - let it continue, just update the current scene reference
-        console.log('[VideoTimeline] handlePlay - audio continuing from previous scene', currentAudioSceneRef.current, 'into scene', sceneNumber);
       } else {
         // Audio is already playing for this scene
-        console.log('[VideoTimeline] handlePlay - audio already playing for scene', sceneNumber, ', NOT calling playNarrationForScene again');
       }
     };
 
     const handlePause = () => {
-      console.log('[VideoTimeline] handlePause triggered, isTransitioning:', isTransitioningRef.current, 'video.currentTime:', video.currentTime);
-      console.log('[VideoTimeline] handlePause - selectedSegmentStart:', selectedSegmentStart, 'activeScene:', activeScene);
 
       const videoEnded =
         video.ended ||
@@ -835,13 +843,11 @@ const stopAnimations = useCallback(() => {
           Math.abs(video.duration - video.currentTime) < 0.05);
 
       if (videoEnded) {
-        console.log('[VideoTimeline] handlePause - ignoring pause event because video ended');
         return;
       }
 
       // Skip pause handling during scene transitions to avoid stopping audio
       if (isTransitioningRef.current) {
-        console.log('[VideoTimeline] handlePause - skipping during scene transition');
         return;
       }
 
@@ -852,7 +858,6 @@ const stopAnimations = useCallback(() => {
     };
 
     const handleEnded = () => {
-      console.log('[VideoTimeline] Video ended, advancing to next scene');
       stopAnimations();
 
       // Don't check isPreviewPlayingRef - if video ended, we were playing
@@ -1040,35 +1045,82 @@ const stopAnimations = useCallback(() => {
                 <div className="relative h-20 rounded-xl border border-primary/20 bg-gradient-to-b from-emerald-500/5 via-background/80 to-background/60 shadow-sm shadow-emerald-500/10">
                   {normalizedAudioClips.length ? (
                     normalizedAudioClips.map((clip) => {
-                      const left = Math.round(clip.start * PIXELS_PER_SECOND);
-                      const width = Math.max(Math.round(clip.duration * PIXELS_PER_SECOND), MIN_CLIP_WIDTH);
+                      const editable = editableAudioClips[clip.id];
+                      const start = editable?.start ?? clip.start;
+                      const duration = editable?.duration ?? clip.duration;
+                      const left = Math.round(start * PIXELS_PER_SECOND);
+                      const width = Math.max(Math.round(duration * PIXELS_PER_SECOND), MIN_CLIP_WIDTH);
                       const maxWidth = timelineWidthPx - left - 8;
                       const safeWidth = Math.max(Math.min(width, maxWidth), MIN_CLIP_WIDTH);
+                      const isBeingDragged = draggedClip?.id === clip.id;
 
                       return (
                         <div
                           key={clip.id}
                           className={cn(
-                            "absolute top-1 bottom-1 flex min-w-[96px] flex-col justify-between rounded-lg border px-3 py-2 shadow-md hover:shadow-lg transition-shadow",
-                            clip.accentClassName
+                            "absolute top-1 bottom-1 flex min-w-[96px] flex-col justify-between rounded-lg border px-3 py-2 shadow-md transition-shadow cursor-grab select-none",
+                            clip.accentClassName,
+                            isBeingDragged && "opacity-75 shadow-lg ring-2 ring-primary cursor-grabbing"
                           )}
                           style={{ left, width: safeWidth }}
+                          onMouseDown={(e) => {
+                            if ((e.target as HTMLElement).closest('[data-resize]')) return;
+                            setDraggedClip({
+                              id: clip.id,
+                              type: 'move',
+                              startX: e.clientX,
+                              startStart: start,
+                              startEnd: start + duration,
+                            });
+                          }}
                         >
-                          <div className="flex items-center justify-between gap-2 text-[11px] font-semibold">
+                          {/* Left resize handle */}
+                          <div
+                            data-resize="start"
+                            className="absolute left-0 top-0 bottom-0 w-1 cursor-col-resize hover:w-2 bg-primary/0 hover:bg-primary/80 transition-all rounded-l-lg"
+                            onMouseDown={(e) => {
+                              e.stopPropagation();
+                              setDraggedClip({
+                                id: clip.id,
+                                type: 'resize-start',
+                                startX: e.clientX,
+                                startStart: start,
+                                startEnd: start + duration,
+                              });
+                            }}
+                          />
+
+                          <div className="flex items-center justify-between gap-2 text-[11px] font-semibold pointer-events-none">
                             <span className="truncate">{clip.label}</span>
                             <span className="text-[10px] text-foreground/60">
-                              {formatTime(clip.start)} - {formatTime(clip.start + clip.duration)}
+                              {formatTime(start)} - {formatTime(start + duration)}
                             </span>
                           </div>
-                          <div className="flex h-6 items-end gap-1 text-emerald-400">
+                          <div className="flex h-6 items-end gap-1 text-emerald-400 pointer-events-none">
                             {DEFAULT_WAVEFORM.map((height, index) => (
                               <span
                                 key={index}
-                                className="flex-1 rounded-full bg-current/70 hover:bg-current transition-colors"
+                                className="flex-1 rounded-full bg-current/70 transition-colors"
                                 style={{ height: `${height / 2}px` }}
                               />
                             ))}
                           </div>
+
+                          {/* Right resize handle */}
+                          <div
+                            data-resize="end"
+                            className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:w-2 bg-primary/0 hover:bg-primary/80 transition-all rounded-r-lg"
+                            onMouseDown={(e) => {
+                              e.stopPropagation();
+                              setDraggedClip({
+                                id: clip.id,
+                                type: 'resize-end',
+                                startX: e.clientX,
+                                startStart: start,
+                                startEnd: start + duration,
+                              });
+                            }}
+                          />
                         </div>
                       );
                     })
