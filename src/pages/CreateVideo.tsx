@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { AudioPlayer } from "@/components/ui/audio-player";
 import { Wand2, Check, Loader2, Volume2, RefreshCw, Play } from "lucide-react";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useAuth } from "@/lib/use-auth";
@@ -120,8 +121,6 @@ const FORCED_VOICES: { voice_id: string; name: string; language: string; preview
   { voice_id: "aQROLel5sQbj1vuIVi6B", name: "Élénore", language: "Français" },
   { voice_id: "a5n9pJUnAhX4fn7lx3uo", name: "Marc", language: "Français" },
 ];
-
-const AUDIO_PLAYER_STYLE = "w-full rounded-lg bg-transparent text-foreground [&::-webkit-media-controls-panel]:bg-gradient-to-r [&::-webkit-media-controls-panel]:from-primary/10 [&::-webkit-media-controls-panel]:to-accent/5 [&::-webkit-media-controls-enclosure]:rounded-lg [&::-webkit-media-controls-play-button]:bg-gradient-to-r [&::-webkit-media-controls-play-button]:from-primary [&::-webkit-media-controls-play-button]:to-accent [&::-webkit-media-controls-play-button]:rounded-full [&::-webkit-media-controls-play-button]:scale-110 [&::-webkit-media-controls-play-button]:shadow-md [&::-webkit-media-controls-timeline]:bg-gradient-to-r [&::-webkit-media-controls-timeline]:from-primary/30 [&::-webkit-media-controls-timeline]:to-accent/20 [&::-webkit-media-controls-timeline]:accent-primary [&::-webkit-media-controls-current-time-display]:text-xs [&::-webkit-media-controls-time-remaining-display]:text-xs [&::-webkit-media-controls-mute-button]:text-foreground/70 hover:[&::-webkit-media-controls-mute-button]:text-foreground";
 
 const blobToBase64 = async (blob: Blob): Promise<string> => {
   const arrayBuffer = await blob.arrayBuffer();
@@ -1526,13 +1525,7 @@ const CreateVideo = () => {
                 <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Aperçu de la voix</p>
                 <span className="text-xs text-muted-foreground/80">{selectedVoice.language ?? "Voix IA"}</span>
               </div>
-              <div className="rounded-xl border border-primary/20 bg-gradient-to-r from-primary/15 via-primary/5 to-transparent p-3 shadow-[0_25px_80px_-45px_rgba(37,99,235,0.55)]">
-                <audio
-                  controls
-                  src={selectedVoice.preview_url}
-                  className={AUDIO_PLAYER_STYLE}
-                />
-              </div>
+              <AudioPlayer src={selectedVoice.preview_url} />
             </div>
           )}
         </div>
@@ -1595,13 +1588,7 @@ const CreateVideo = () => {
                     )}
                   </Button>
                   {sceneAudioUrls[scene.scene_number] && (
-                    <div className="rounded-xl border border-primary/20 bg-gradient-to-br from-primary/15 via-primary/5 to-transparent p-3 shadow-[0_25px_80px_-45px_rgba(37,99,235,0.55)]">
-                      <audio
-                        controls
-                        src={sceneAudioUrls[scene.scene_number]}
-                        className={AUDIO_PLAYER_STYLE}
-                      />
-                    </div>
+                    <AudioPlayer src={sceneAudioUrls[scene.scene_number]} />
                   )}
                   {sceneVoiceStatus[scene.scene_number] === "error" && (
                     <p className="text-xs text-destructive">Une erreur est survenue. Vérifiez votre clé API ElevenLabs et réessayez.</p>
