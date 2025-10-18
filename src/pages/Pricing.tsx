@@ -9,41 +9,53 @@ import { useAuth } from "@/lib/use-auth";
 const pricingTiers = [
   {
     name: "Starter",
-    price: "0€",
-    description: "Idéal pour découvrir le studio et produire vos premiers storyboards.",
+    price: "69€",
+    period: "/mois",
+    videos: "10 vidéos",
+    description: "Idéal pour les créateurs qui commencent et veulent explorer les possibilités du studio.",
     features: [
-      "3 projets par mois",
+      "10 vidéos/mois",
       "Génération de scripts IA",
-      "Exports 720p",
+      "Voix ElevenLabs intégrée",
+      "Exports vidéo haute qualité",
       "Bibliothèque de templates",
+      "Support par email",
     ],
     cta: "Commencer",
     highlight: false,
   },
   {
-    name: "Créateur",
-    price: "39€",
-    description: "Pensé pour les équipes créatives qui veulent accélérer leur production.",
+    name: "Pro",
+    price: "129€",
+    period: "/mois",
+    videos: "25 vidéos",
+    description: "Pour les créateurs et petites équipes qui produisent régulièrement des contenus.",
     features: [
-      "Projets illimités",
-      "Exports 4K",
+      "25 vidéos/mois",
+      "Tous les templates",
       "Voix IA premium",
       "Collaboration en temps réel",
+      "Exports 4K illimités",
       "Support prioritaire",
+      "Analytics avancées",
     ],
     cta: "Lancer l'abonnement",
     highlight: true,
   },
   {
-    name: "Studio",
-    price: "Sur mesure",
-    description: "Accompagnement dédié pour les agences, studios et grandes équipes.",
+    name: "Business",
+    price: "169€",
+    period: "/mois",
+    videos: "50 vidéos",
+    description: "Pour les agences, studios et équipes en production intensive.",
     features: [
+      "50 vidéos/mois",
       "Onboarding personnalisé",
       "Intégrations API",
       "Brand kit étendu",
       "SLA et support dédié",
       "Formation des équipes",
+      "Factures mensuelles",
     ],
     cta: "Nous contacter",
     highlight: false,
@@ -116,7 +128,10 @@ const Pricing = () => {
 
                 <div className="space-y-2 text-center">
                   <h3 className="text-xl font-semibold">{tier.name}</h3>
-                  <div className="text-4xl font-bold">{tier.price}</div>
+                  <div className="space-y-1">
+                    <div className="text-4xl font-bold">{tier.price}<span className="text-lg text-muted-foreground">{tier.period}</span></div>
+                    <div className="text-sm font-medium text-primary/80">{tier.videos}</div>
+                  </div>
                   <p className="text-sm text-muted-foreground">{tier.description}</p>
                 </div>
 
@@ -138,7 +153,7 @@ const Pricing = () => {
                     tier.highlight ? "bg-primary text-primary-foreground hover:opacity-90" : "bg-white/10 text-foreground hover:bg-white/20"
                   }`}
                 >
-                  <Link to={tier.name === "Studio" ? "/contact" : "/auth"}>{tier.cta}</Link>
+                  <Link to={tier.name === "Business" ? "/contact" : "/auth"}>{tier.cta}</Link>
                 </Button>
               </motion.div>
             ))}
