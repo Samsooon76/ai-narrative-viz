@@ -150,6 +150,7 @@ interface ScriptScene {
   title: string;
   visual: string;
   narration: string;
+  duration_seconds?: number;
   speech?: string;
   audio_description?: string;
 }
@@ -884,6 +885,20 @@ const CreateVideo = () => {
           : data.script;
 
         setScriptData(parsedScript);
+
+        // Initialize scene durations from script if provided
+        if (parsedScript?.scenes) {
+          const initialDurations: Record<number, number> = {};
+          parsedScript.scenes.forEach((scene: ScriptScene) => {
+            if (typeof scene.duration_seconds === 'number' && scene.duration_seconds > 0) {
+              initialDurations[scene.scene_number] = scene.duration_seconds;
+            }
+          });
+          if (Object.keys(initialDurations).length > 0) {
+            setSceneCustomDurations(initialDurations);
+          }
+        }
+
         setCurrentStep('script');
       }
 
@@ -972,6 +987,20 @@ const CreateVideo = () => {
       }
 
       setScriptData(data.script);
+
+      // Initialize scene durations from script if provided
+      if (data.script?.scenes) {
+        const initialDurations: Record<number, number> = {};
+        data.script.scenes.forEach((scene: ScriptScene) => {
+          if (typeof scene.duration_seconds === 'number' && scene.duration_seconds > 0) {
+            initialDurations[scene.scene_number] = scene.duration_seconds;
+          }
+        });
+        if (Object.keys(initialDurations).length > 0) {
+          setSceneCustomDurations(initialDurations);
+        }
+      }
+
       setCurrentStep('script');
       
       toast({

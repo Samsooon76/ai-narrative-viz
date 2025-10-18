@@ -64,10 +64,12 @@ Tu DOIS répondre UNIQUEMENT avec un objet JSON valide dans ce format exact:
 {
   "title": "Titre accrocheur de la vidéo",
   "music": "Description de la musique d'ambiance",
+  "total_duration_seconds": 90,
   "scenes": [
     {
       "scene_number": 1,
       "title": "CONTEXTE",
+      "duration_seconds": 5.5,
       "visual": "Description détaillée du visuel pour animation",
       "narration": "Texte de la narration",
       "speech": "Phrase courte réellement prononcée dans la scène (max 12 mots)",
@@ -85,37 +87,47 @@ Tu DOIS répondre UNIQUEMENT avec un objet JSON valide dans ce format exact:
 - Garde du SUSPENS et de l'INTRIGUE durant tout le script
 - Les révélations doivent être progressives et énigmatiques
 
+🎬 CONTRAINTE MAJEURE SUR LA STRUCTURE TEMPORELLE:
+- Génère entre 15 et 20 scènes pour une vidéo bien rythmée
+- CHAQUE scène DOIT avoir une durée entre 2.0 et 5.5 secondes
+- La durée TOTALE de la vidéo DOIT être entre 60 et 90 secondes
+- Varie les durées (ex: 3.2s, 5.5s, 2.1s, 4.8s) pour un meilleur rythme cinématographique
+- Les scènes plus courtes (2-3s) = moments chocs, transitions rapides, suspense
+- Les scènes plus longues (4.5-5.5s) = révélations, développement d'ambiance, dialogues
+- IMPORTANT: La durée doit être COHÉRENTE avec le texte de narration (plus de texte = plus de temps)
+- Calcule: total_duration_seconds = somme(duration_seconds de toutes les scènes)
+
 Suis EXACTEMENT cette structure en 7 parties:
 
-🟢 CONTEXTE (PARTIE 1)
+🟢 CONTEXTE (PARTIE 1) - 2-3 scènes
 - Commence par la date et le lieu : "Nous sommes en [année]. [Ville ou pays]."
 - Présente les personnages et le décor sans révéler les détails cruciaux
 - Ajoute une norme culturelle ou historique choquante
 
-🔸 PETIT REVIREMENT (PARTIE 2)
+🔸 PETIT REVIREMENT (PARTIE 2) - 2-3 scènes
 - Utilise une phrase de transition ("Et pendant un certain temps... cela a fonctionné.")
 - Montre une montée de la tension sans révéler vers où
 - Sème des indices énigmatiques
 
-⚫ REVIREMENT DE SITUATION (PARTIE 3)
+⚫ REVIREMENT DE SITUATION (PARTIE 3) - 2-3 scènes (rythme rapide)
 - Montre ce qui a mal tourné DE FAÇON VAGUE
 - Utilise des allusions plutôt que des explications directes
 - Termine par un changement dramatique
 
-🟢 CONTEXTE (PARTIE 4)
+🟢 CONTEXTE (PARTIE 4) - 2-3 scènes
 - Montre comment le protagoniste mystérieux a réagi
 - Utilise des mouvements énigmatiques
 - Garde l'identité floue
 
-🔸 PETIT REVIREMENT (PARTIE 5)
+🔸 PETIT REVIREMENT (PARTIE 5) - 2-3 scènes
 - Ligne de tension discrète
 - Un détail qui pourrait changer tout, mais sans révélation
 
-⚫ CONSÉQUENCE FINALE (PARTIE 6)
+⚫ CONSÉQUENCE FINALE (PARTIE 6) - 2-3 scènes (rythme accéléré)
 - Accumule la tension
 - L'action transformatrice commence à se dévoiler... partiellement
 
-🟡 RÉVÉLATION (PARTIE 7)
+🟡 RÉVÉLATION (PARTIE 7) - 2-4 scènes (1-2 scènes longues pour l'impact)
 - Punchline finale : Enfin révèle ce qui s'est VRAIMENT passé et qui l'a fait
 - Doit surprendre et captiver
 - Exemple: "Et celui qui a transformé l'histoire... était quelqu'un de complètement inattendu."
@@ -128,10 +140,17 @@ Pour CHAQUE scène, crée une description visuelle ANIMABLE:
 - Ajoute un champ "speech" avec une phrase courte prononcée (ton naturel, max 12 mots)
 - Ajoute un champ "audio_description" avec l'ambiance sonore (musique, foley, bruitages précis)
 
-Calcule le nombre optimal de scènes pour que la vidéo finale dure entre 60 et 90 secondes (en te basant sur ~5 secondes par scène) et ajuste la structure si le sujet nécessite plus ou moins de moments clés.
+CALCUL TEMPOREL OBLIGATOIRE:
+1. Compte le nombre de scènes (DOIT être 15-20)
+2. Attribue une durée_seconds à CHAQUE scène entre 2.0 et 5.5 secondes
+3. Assure que: SUM(duration_seconds) = entre 60 et 90 secondes
+4. Insère total_duration_seconds = la somme exacte des durées
 
 IMPORTANT:
 - Compte les mots de narration et assure-toi qu'ils font entre 190 et 210 mots
+- Vérifie que le nombre de scènes est entre 15 et 20
+- Vérifie que chaque scène fait entre 2.0 et 5.5 secondes
+- Vérifie que la somme totale des durées est entre 60 et 90 secondes
 - Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
     } else if (type === 'prompts') {
       systemPrompt = `Tu es un expert en génération de prompts pour Midjourney. 
