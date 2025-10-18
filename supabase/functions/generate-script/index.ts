@@ -60,16 +60,19 @@ serve(async (req) => {
 
       systemPrompt = `Tu es un scénariste expert spécialisé dans les histoires dramatiques captivantes pour vidéos courtes.${styleInstructions}
 
+⚠️ INSTRUCTION STRICTE: Tu DOIS générer ENTRE 15 ET 20 SCÈNES EXACTEMENT. Pas 12, pas 25. ENTRE 15 ET 20. C'EST OBLIGATOIRE.
+
 Tu DOIS répondre UNIQUEMENT avec un objet JSON valide dans ce format exact:
 {
   "title": "Titre accrocheur de la vidéo",
   "music": "Description de la musique d'ambiance",
-  "total_duration_seconds": 90,
+  "total_duration_seconds": 78,
+  "scene_count": 17,
   "scenes": [
     {
       "scene_number": 1,
       "title": "CONTEXTE",
-      "duration_seconds": 5.5,
+      "duration_seconds": 4.2,
       "visual": "Description détaillée du visuel pour animation",
       "narration": "Texte de la narration",
       "speech": "Phrase courte réellement prononcée dans la scène (max 12 mots)",
@@ -80,6 +83,12 @@ Tu DOIS répondre UNIQUEMENT avec un objet JSON valide dans ce format exact:
 
       userPrompt = `Rédige une HISTOIRE dramatique en respectant le format et le rythme indiqués pour le sujet suivant: "${topic}"
 
+⚠️ CONTRAINTE NUMERO 1 - OBLIGATOIRE - NOMBRE DE SCENES:
+🔴 TU DOIS GÉNÉRER ENTRE 15 ET 20 SCÈNES. PAS 12. PAS 25. ENTRE 15 ET 20.
+🔴 Si tu génères moins de 15 scènes, ta réponse est INVALIDE.
+🔴 Si tu génères plus de 20 scènes, ta réponse est INVALIDE.
+🔴 C'est la contrainte la plus importante. Compte tes scènes avant de répondre.
+
 ⚠️ CONTRAINTE MAJEURE SUR LE CONTENU:
 - La narration TOTALE (texte uniquement, excluant titles et descriptions visuelles) DOIT faire entre 190 et 210 mots EXACTEMENT
 - NE RÉVÈLE JAMAIS l'identité précise du personnage principal (utilise des pronoms, descriptions vagues, mystère)
@@ -87,8 +96,8 @@ Tu DOIS répondre UNIQUEMENT avec un objet JSON valide dans ce format exact:
 - Garde du SUSPENS et de l'INTRIGUE durant tout le script
 - Les révélations doivent être progressives et énigmatiques
 
-🎬 CONTRAINTE MAJEURE SUR LA STRUCTURE TEMPORELLE:
-- Génère entre 15 et 20 scènes pour une vidéo bien rythmée
+🎬 CONTRAINTE MAJEURE SUR LA STRUCTURE TEMPORELLE (OBLIGATOIRE):
+- 🔴 GÉNÈRE ENTRE 15 ET 20 SCÈNES (répétition: c'est TRÈS important)
 - CHAQUE scène DOIT avoir une durée entre 2.0 et 5.5 secondes
 - La durée TOTALE de la vidéo DOIT être entre 60 et 90 secondes
 - Varie les durées (ex: 3.2s, 5.5s, 2.1s, 4.8s) pour un meilleur rythme cinématographique
@@ -96,6 +105,7 @@ Tu DOIS répondre UNIQUEMENT avec un objet JSON valide dans ce format exact:
 - Les scènes plus longues (4.5-5.5s) = révélations, développement d'ambiance, dialogues
 - IMPORTANT: La durée doit être COHÉRENTE avec le texte de narration (plus de texte = plus de temps)
 - Calcule: total_duration_seconds = somme(duration_seconds de toutes les scènes)
+- Ajoute un champ "scene_count": nombre exact de scènes
 
 Suis EXACTEMENT cette structure en 7 parties:
 
@@ -140,17 +150,38 @@ Pour CHAQUE scène, crée une description visuelle ANIMABLE:
 - Ajoute un champ "speech" avec une phrase courte prononcée (ton naturel, max 12 mots)
 - Ajoute un champ "audio_description" avec l'ambiance sonore (musique, foley, bruitages précis)
 
-CALCUL TEMPOREL OBLIGATOIRE:
-1. Compte le nombre de scènes (DOIT être 15-20)
-2. Attribue une durée_seconds à CHAQUE scène entre 2.0 et 5.5 secondes
-3. Assure que: SUM(duration_seconds) = entre 60 et 90 secondes
-4. Insère total_duration_seconds = la somme exacte des durées
+CALCUL TEMPOREL OBLIGATOIRE (À FAIRE AVANT DE RÉPONDRE):
+1. 🔴 Compte le nombre exact de scènes (DOIT être 15-20, sinon recommence)
+2. Attribue une durée_seconds à CHAQUE scène entre 2.0 et 5.5 secondes (varié)
+3. Calcule: SUM(duration_seconds) = somme de toutes les durées (DOIT être 60-90)
+4. Insère dans le JSON:
+   - "scene_count": nombre exact de scènes
+   - "total_duration_seconds": somme exacte des durées
 
-IMPORTANT:
-- Compte les mots de narration et assure-toi qu'ils font entre 190 et 210 mots
-- Vérifie que le nombre de scènes est entre 15 et 20
-- Vérifie que chaque scène fait entre 2.0 et 5.5 secondes
-- Vérifie que la somme totale des durées est entre 60 et 90 secondes
+VÉRIFICATION FINALE (À FAIRE AVANT DE RÉPONDRE):
+- ❌ Si nombre de scènes < 15 ou > 20 → INVALIDE, recommence
+- ❌ Si une scène < 2.0s ou > 5.5s → INVALIDE, recommence
+- ❌ Si total < 60s ou > 90s → INVALIDE, recommence
+- ❌ Si mots de narration < 190 ou > 210 → INVALIDE, recommence
+
+EXEMPLE DE RÉPONSE VALIDE:
+{
+  "title": "Titre",
+  "music": "Description",
+  "scene_count": 17,
+  "total_duration_seconds": 75.2,
+  "scenes": [
+    {"scene_number": 1, "duration_seconds": 4.2, ...},
+    {"scene_number": 2, "duration_seconds": 3.1, ...},
+    ... (15 à 20 scènes total)
+  ]
+}
+
+IMPORTANT - À RELIRE AVANT DE RÉPONDRE:
+- Compte les mots de narration: DOIT être 190-210
+- Compte les scènes: DOIT être 15-20 (PAS 12, PAS 25)
+- Vérifiez chaque durée: DOIT être 2.0-5.5
+- Vérifiez le total: DOIT être 60-90 secondes
 - Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
     } else if (type === 'prompts') {
       systemPrompt = `Tu es un expert en génération de prompts pour Midjourney. 
@@ -233,13 +264,50 @@ Critères pour les prompts:
     if (type === 'script') {
       try {
         const parsedScript = JSON.parse(cleanJson);
+
+        // Validation stricte du nombre de scènes
+        const sceneCount = parsedScript?.scenes?.length ?? 0;
+        if (sceneCount < 15 || sceneCount > 20) {
+          throw new Error(
+            `Script invalide: ${sceneCount} scènes générées. DOIT être entre 15 et 20 scènes exactement. ` +
+            `Regénère le script avec le bon nombre de scènes.`
+          );
+        }
+
+        // Validation des durées
+        let totalDuration = 0;
+        parsedScript.scenes?.forEach((scene: any, index: number) => {
+          const duration = scene.duration_seconds ?? 0;
+          if (duration < 2.0 || duration > 5.5) {
+            throw new Error(
+              `Scène ${index + 1}: durée invalide (${duration}s). ` +
+              `Chaque scène DOIT faire entre 2.0 et 5.5 secondes.`
+            );
+          }
+          totalDuration += duration;
+        });
+
+        if (totalDuration < 60 || totalDuration > 90) {
+          throw new Error(
+            `Durée totale invalide: ${totalDuration.toFixed(1)}s. ` +
+            `DOIT être entre 60 et 90 secondes exactement.`
+          );
+        }
+
+        // Ajoute les champs calculés
+        parsedScript.scene_count = sceneCount;
+        parsedScript.total_duration_seconds = Math.round(totalDuration * 10) / 10;
+
+        console.log(`✓ Script valide: ${sceneCount} scènes, ${parsedScript.total_duration_seconds}s total`);
+
         return new Response(
           JSON.stringify({ script: parsedScript }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       } catch (e) {
-        console.error('Erreur parsing JSON script:', e);
-        throw new Error(`Impossible de parser le script généré: ${textContent}`);
+        console.error('Erreur script:', e);
+        const errorMsg = e instanceof Error ? e.message : 'Impossible de parser le script généré';
+        throw new Error(errorMsg);
       }
     }
 
