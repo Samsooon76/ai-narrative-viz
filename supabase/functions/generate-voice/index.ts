@@ -43,7 +43,9 @@ serve(async (req) => {
       body: JSON.stringify({
         model_id: CARTESIA_MODEL,
         transcript: narration.trim(),
-        voice_id: CARTESIA_VOICE_ID,
+        voice: {
+          id: CARTESIA_VOICE_ID,
+        },
         output_format: {
           container: 'wav',
           encoding: 'pcm',
