@@ -91,7 +91,9 @@ interface VideoTimelineProps {
   onPlaybackControllerChange?: (controller: TimelinePlaybackController | null) => void;
   sceneVoiceData?: Record<number, SceneVoiceRecord>;
   sceneAudioSpeeds?: Record<number, number>;
+  sceneCustomDurations?: Record<number, number>;
   onAudioClipsChange?: (clips: Record<string, { start: number; duration: number }>) => void;
+  onSceneDurationChange?: (durations: Record<number, number>) => void;
 }
 
 const statusTokens: Record<SceneStatus, { label: string; tone: "ready" | "pending" | "error" | "idle" }> = {
@@ -149,7 +151,9 @@ export const VideoTimeline = ({
   onPlaybackControllerChange,
   sceneVoiceData,
   sceneAudioSpeeds,
+  sceneCustomDurations,
   onAudioClipsChange,
+  onSceneDurationChange,
 }: VideoTimelineProps) => {
   const [activeScene, setActiveScene] = useState<number | null>(scenes[0]?.sceneNumber ?? null);
   const [playheadTime, setPlayheadTime] = useState(0);
@@ -158,6 +162,8 @@ export const VideoTimeline = ({
   const [pendingAutoPlay, setPendingAutoPlay] = useState(false);
   const [editableAudioClips, setEditableAudioClips] = useState<Record<string, { start: number; duration: number }>>({});
   const [draggedClip, setDraggedClip] = useState<{ id: string; type: 'move' | 'resize-start' | 'resize-end'; startX: number; startStart: number; startEnd: number } | null>(null);
+  const [editingSceneDuration, setEditingSceneDuration] = useState<number | null>(null);
+  const [editingSceneDurationValue, setEditingSceneDurationValue] = useState<string>("");
 
   const timelineScrollRef = useRef<HTMLDivElement | null>(null);
   const playheadTimeRef = useRef(0);
@@ -234,17 +240,16 @@ export const VideoTimeline = ({
 
     let cursor = 0;
     return scenes.map((scene) => {
-      // Priority: video duration > voice duration > scene duration > fallback
+      // Priority: video duration > custom scene duration > scene duration prop > fallback
+      // NOTE: Voice duration is NOT used for scene duration - audio and scenes are decoupled
       const videoDuration = videoDurations[scene.sceneNumber];
-      const voiceDuration = sceneVoiceData?.[scene.sceneNumber]?.duration;
-      const speed = sceneAudioSpeeds?.[scene.sceneNumber] ?? 1;
+      const customDuration = sceneCustomDurations?.[scene.sceneNumber];
 
       let candidateDuration: number;
       if (typeof videoDuration === "number" && Number.isFinite(videoDuration) && videoDuration > 0) {
         candidateDuration = videoDuration;
-      } else if (typeof voiceDuration === "number" && Number.isFinite(voiceDuration) && voiceDuration > 0) {
-        // Adjust voice duration by playback speed
-        candidateDuration = voiceDuration / speed;
+      } else if (typeof customDuration === "number" && Number.isFinite(customDuration) && customDuration > 0) {
+        candidateDuration = customDuration;
       } else {
         candidateDuration = scene.durationSeconds ?? fallbackDuration;
       }
@@ -261,7 +266,7 @@ export const VideoTimeline = ({
         end,
       };
     });
-  }, [sceneVoiceData, scenes, timelineDuration, videoDurations, sceneAudioSpeeds]);
+  }, [sceneCustomDurations, scenes, timelineDuration, videoDurations]);
 
   const computedDuration = timelineSegments.length ? timelineSegments[timelineSegments.length - 1].end : 0;
   const totalDuration = Math.max(timelineDuration ?? 0, computedDuration);
@@ -1250,11 +1255,48 @@ const stopAnimations = useCallback(() => {
                 )}
               </div>
             </div>
-            <div className="space-y-1 text-sm">
-              <p className="font-semibold text-foreground">{selectedScene.title}</p>
-              <p className="text-xs text-muted-foreground">
-                Scène {selectedScene.sceneNumber} · {formatTime(selectedSegmentStart ?? 0)} → {formatTime((selectedSegmentStart ?? 0) + segmentDuration)}
-              </p>
+            <div className="space-y-3">
+              <div className="space-y-1 text-sm">
+                <p className="font-semibold text-foreground">{selectedScene.title}</p>
+                <p className="text-xs text-muted-foreground">
+                  Scène {selectedScene.sceneNumber} · {formatTime(selectedSegmentStart ?? 0)} → {formatTime((selectedSegmentStart ?? 0) + segmentDuration)}
+                </p>
+              </div>
+              <div className="space-y-1 border-t border-border/40 pt-3">
+                <Label htmlFor="scene-duration" className="text-xs font-semibold text-muted-foreground">Durée de la scène (sec)</Label>
+                <div className="flex gap-2">
+                  <input
+                    id="scene-duration"
+                    type="number"
+                    min="1"
+                    max="120"
+                    step="0.5"
+                    value={editingSceneDuration === selectedScene.sceneNumber ? editingSceneDurationValue : (sceneCustomDurations?.[selectedScene.sceneNumber] ?? segmentDuration).toFixed(1)}
+                    onChange={(e) => {
+                      if (editingSceneDuration !== selectedScene.sceneNumber) {
+                        setEditingSceneDuration(selectedScene.sceneNumber);
+                      }
+                      setEditingSceneDurationValue(e.target.value);
+                    }}
+                    onBlur={() => {
+                      const numValue = parseFloat(editingSceneDurationValue);
+                      if (!Number.isNaN(numValue) && numValue > 0) {
+                        const updated = { ...sceneCustomDurations };
+                        updated[selectedScene.sceneNumber] = numValue;
+                        onSceneDurationChange?.(updated);
+                      }
+                      setEditingSceneDuration(null);
+                      setEditingSceneDurationValue("");
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        (e.target as HTMLInputElement).blur();
+                      }
+                    }}
+                    className="flex-1 rounded-lg border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+                  />
+                </div>
+              </div>
             </div>
             <div className="flex flex-col gap-2">
               <Button

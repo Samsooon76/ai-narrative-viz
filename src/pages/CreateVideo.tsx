@@ -214,6 +214,7 @@ const CreateVideo = () => {
   const [sceneVoiceData, setSceneVoiceData] = useState<Record<number, SceneVoiceRecord>>({});
   const [sceneAudioSpeeds, setSceneAudioSpeeds] = useState<Record<number, number>>({});
   const [sceneAudioClipEdits, setSceneAudioClipEdits] = useState<Record<string, { start: number; duration: number }>>({});
+  const [sceneCustomDurations, setSceneCustomDurations] = useState<Record<number, number>>({});
   const videoNegativePrompt = "jitter, bad hands, blur, distortion";
   const videoSeed = "";
   const timelinePreviewRef = useRef<HTMLVideoElement | null>(null);
@@ -284,12 +285,13 @@ const CreateVideo = () => {
     timelinePlaybackControllerRef.current = controller;
   }, [estimatedSceneDuration, selectedVoiceId]);
 
-  const persistVoiceData = useCallback(async (voiceData: Record<number, SceneVoiceRecord>, clipEdits?: Record<string, { start: number; duration: number }>) => {
+  const persistVoiceData = useCallback(async (voiceData: Record<number, SceneVoiceRecord>, clipEdits?: Record<string, { start: number; duration: number }>, durations?: Record<number, number>) => {
     if (!projectId) return;
     try {
       const dataToSave = {
         voiceData,
         clipEdits: clipEdits || sceneAudioClipEdits,
+        sceneDurations: durations || sceneCustomDurations,
       };
       const { error } = await supabase
         .from('video_projects')
@@ -301,7 +303,7 @@ const CreateVideo = () => {
     } catch (error) {
       console.error('Erreur inattendue sauvegarde voix:', error);
     }
-  }, [projectId, sceneAudioClipEdits]);
+  }, [projectId, sceneAudioClipEdits, sceneCustomDurations]);
 
   const loadVoices = useCallback(async () => {
     const apiKey = import.meta.env.VITE_ELEVENLABS_API_KEY;
@@ -504,15 +506,15 @@ const CreateVideo = () => {
     sceneVoiceDataRef.current = sceneVoiceData;
   }, [sceneVoiceData]);
 
-  // Auto-persist clip edits
+  // Auto-persist clip edits and scene durations
   useEffect(() => {
-    if (Object.keys(sceneAudioClipEdits).length > 0 && projectId) {
+    if ((Object.keys(sceneAudioClipEdits).length > 0 || Object.keys(sceneCustomDurations).length > 0) && projectId) {
       const timer = setTimeout(() => {
-        void persistVoiceData(sceneVoiceData, sceneAudioClipEdits);
+        void persistVoiceData(sceneVoiceData, sceneAudioClipEdits, sceneCustomDurations);
       }, 1000); // Debounce 1 second
       return () => clearTimeout(timer);
     }
-  }, [sceneAudioClipEdits, projectId, sceneVoiceData]);
+  }, [sceneAudioClipEdits, sceneCustomDurations, projectId, sceneVoiceData]);
 
   useEffect(() => {
     return () => {
@@ -729,9 +731,10 @@ const CreateVideo = () => {
           ? JSON.parse(data.voice_data)
           : data.voice_data;
 
-        // Handle both old format (direct voice records) and new format (with voiceData and clipEdits)
+        // Handle multiple formats: old (direct voice records), new (with voiceData, clipEdits, sceneDurations)
         const voiceDataToProcess = rawVoiceData?.voiceData ? rawVoiceData.voiceData : rawVoiceData;
         const clipEditsToRestore = rawVoiceData?.clipEdits ? rawVoiceData.clipEdits : {};
+        const scenesDurationsToRestore = rawVoiceData?.sceneDurations ? rawVoiceData.sceneDurations : {};
 
         if (voiceDataToProcess && typeof voiceDataToProcess === 'object') {
           const restoredUrls: Record<number, string> = {};
@@ -780,6 +783,12 @@ const CreateVideo = () => {
             if (clipEditsToRestore && Object.keys(clipEditsToRestore).length > 0) {
               setSceneAudioClipEdits(clipEditsToRestore);
               console.log('✓ Éditions de clips restaurées', clipEditsToRestore);
+            }
+
+            // Restore scene durations if available
+            if (scenesDurationsToRestore && Object.keys(scenesDurationsToRestore).length > 0) {
+              setSceneCustomDurations(scenesDurationsToRestore);
+              console.log('✓ Durées de scènes restaurées', scenesDurationsToRestore);
             }
 
             // Set selected voice from restored data if not already set
@@ -1824,7 +1833,9 @@ const CreateVideo = () => {
                     isDownloadDisabled={isGeneratingImage}
                     sceneVoiceData={sceneVoiceData}
                     sceneAudioSpeeds={sceneAudioSpeeds}
+                    sceneCustomDurations={sceneCustomDurations}
                     onAudioClipsChange={(edits) => setSceneAudioClipEdits(edits)}
+                    onSceneDurationChange={(durations) => setSceneCustomDurations(durations)}
                     scenes={scriptData.scenes.map((scene) => {
                       const generatedImage = generatedImages.find((img) => img.sceneNumber === scene.scene_number);
                       const isGenerating = generatingVideoScenes.has(scene.scene_number);
