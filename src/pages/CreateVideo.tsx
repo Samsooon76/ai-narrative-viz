@@ -1888,7 +1888,7 @@ const CreateVideo = () => {
                         styleOverrideId: sceneStyleOverrides[scene.scene_number],
                         visual: scene.visual,
                         status,
-                        durationSeconds: estimatedSceneDuration,
+                        durationSeconds: scene.duration_seconds ?? estimatedSceneDuration,
                       };
                     })}
                     onRegenerateImage={regenerateImage}
