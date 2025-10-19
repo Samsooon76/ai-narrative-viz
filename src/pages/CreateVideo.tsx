@@ -6,6 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { AudioPlayer } from "@/components/ui/audio-player";
 import { Wand2, Check, Loader2, Volume2, RefreshCw, Play } from "lucide-react";
+import { GridLoader } from "react-spinners";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useAuth } from "@/lib/use-auth";
 import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
@@ -1468,8 +1469,8 @@ const CreateVideo = () => {
     return (
       <PageShell contentClassName="flex min-h-[60vh] items-center justify-center px-4">
         <div className="text-center">
-          <div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-          <p className="text-muted-foreground">Chargement...</p>
+          <GridLoader color="#3b82f6" size={15} margin={4} />
+          <p className="text-muted-foreground mt-6">Chargement...</p>
         </div>
       </PageShell>
     );

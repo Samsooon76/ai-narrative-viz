@@ -14,6 +14,7 @@ import {
 import { Plus, Video, Clock, Archive, Trash2, RefreshCw } from "lucide-react";
 import { Link, Navigate } from "react-router-dom";
 import { useAuth } from "@/lib/use-auth";
+import { GridLoader } from "react-spinners";
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
@@ -167,15 +168,10 @@ const Dashboard = () => {
 
   if (loading || loadingProjects) {
     return (
-      <PageShell contentClassName="container px-4">
-        <div className="space-y-6 pt-6">
-          <Skeleton className="h-12 w-2/3" />
-          <div className="grid gap-4 md:grid-cols-3">
-            <Skeleton className="h-32" />
-            <Skeleton className="h-32" />
-            <Skeleton className="h-32" />
-          </div>
-          <Skeleton className="h-[420px]" />
+      <PageShell contentClassName="flex min-h-[60vh] items-center justify-center px-4">
+        <div className="text-center">
+          <GridLoader color="#3b82f6" size={15} margin={4} />
+          <p className="text-muted-foreground mt-6">Chargement de vos projets...</p>
         </div>
       </PageShell>
     );
