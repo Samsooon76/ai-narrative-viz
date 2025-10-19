@@ -752,16 +752,18 @@ const CreateVideo = () => {
             setSceneVoiceData(restoredVoiceData);
             setSceneVoiceStatus(restoredStatus);
 
+            // Restore or sync scene durations with actual audio durations (retroactive)
+            const finalSceneDurations = scenesDurationsToRestore && Object.keys(scenesDurationsToRestore).length > 0
+              ? scenesDurationsToRestore
+              : restoredDurations; // Use actual audio durations if no custom durations saved
+
+            setSceneCustomDurations(finalSceneDurations);
+            console.log('✓ Durées de scènes restaurées/synchronisées', finalSceneDurations);
+
             // Restore clip edits if available
             if (clipEditsToRestore && Object.keys(clipEditsToRestore).length > 0) {
               setSceneAudioClipEdits(clipEditsToRestore);
               console.log('✓ Éditions de clips restaurées', clipEditsToRestore);
-            }
-
-            // Restore scene durations if available
-            if (scenesDurationsToRestore && Object.keys(scenesDurationsToRestore).length > 0) {
-              setSceneCustomDurations(scenesDurationsToRestore);
-              console.log('✓ Durées de scènes restaurées', scenesDurationsToRestore);
             }
 
             // Set selected voice from restored data if not already set
@@ -858,18 +860,9 @@ const CreateVideo = () => {
 
         setScriptData(parsedScript);
 
-        // Initialize scene durations from script if provided
-        if (parsedScript?.scenes) {
-          const initialDurations: Record<number, number> = {};
-          parsedScript.scenes.forEach((scene: ScriptScene) => {
-            if (typeof scene.duration_seconds === 'number' && scene.duration_seconds > 0) {
-              initialDurations[scene.scene_number] = scene.duration_seconds;
-            }
-          });
-          if (Object.keys(initialDurations).length > 0) {
-            setSceneCustomDurations(initialDurations);
-          }
-        }
+        // Don't initialize durations from script here - let loadProjectImages do it
+        // This ensures actual audio durations take priority for retroactive sync
+        // Durations will be set after audios are restored
 
         setCurrentStep('script');
       }
