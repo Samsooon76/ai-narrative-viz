@@ -100,13 +100,17 @@ Tu DOIS répondre UNIQUEMENT avec un objet JSON valide dans ce format exact:
 
 🎬 CONTRAINTE MAJEURE SUR LA STRUCTURE TEMPORELLE (OBLIGATOIRE):
 - 🔴 GÉNÈRE ENTRE 15 ET 20 SCÈNES (répétition: c'est TRÈS important)
-- 🔴 TIMING TTS: Le synthétiseur vocal parle à 3.2 mots/seconde
-- 🔴 CHAQUE scène DOIT avoir: duration_seconds = ROUNDUP(nombre_de_mots_narration / 3.2, 1 décimale)
+- 🔴 TIMING TTS ABSOLU: Le synthétiseur vocal parle à EXACTEMENT 3.2 mots/seconde
+- 🔴 FORMULE STRICTE: duration_seconds = (nombre_de_mots_narration / 3.2) arrondi à 1 décimale
+- 🔴 EXEMPLE CALCUL:
+  * 10 mots → 10/3.2 = 3.125 → 3.1 secondes
+  * 12 mots → 12/3.2 = 3.75 → 3.8 secondes
+  * 16 mots → 16/3.2 = 5.0 → 5.0 secondes
+- 🔴 PAS DE DURÉE ARBITRAIRE: Compte les mots, divise par 3.2, arrondi à 1 décimale, FINI.
 - La durée TOTALE de la vidéo DOIT être entre 60 et 90 secondes
-- IMPORTANT: La durée de chaque scène DOIT correspondre au temps exact pour dire la narration à 3.2 mots/sec
-- IMPORTANT: Cela crée une synchronisation parfaite image-narration (pas de durée arbitraire)
-- Les scènes plus courtes (2-3s) = narrations concises, moments chocs, transitions rapides
-- Les scènes plus longues (4.5-5.5s) = narrations plus détaillées, révélations, développement
+- Les scènes plus courtes (2-3s) = 6-10 mots de narration
+- Les scènes plus longues (4.5-5.5s) = 14-18 mots de narration
+- RAPPEL: Image et audio doivent avoir la MÊME durée, sinon désynchronisation!
 
 Suis EXACTEMENT cette structure en 7 parties:
 
@@ -152,15 +156,23 @@ Pour CHAQUE scène, crée une description visuelle ANIMABLE:
 
 CALCUL TEMPOREL OBLIGATOIRE (À FAIRE AVANT DE RÉPONDRE):
 1. 🔴 Compte le nombre exact de scènes (DOIT être 15-20, sinon recommence)
-2. 🔴 POUR CHAQUE SCÈNE:
-   a) Compte le nombre de MOTS dans la narration (excluant visual, audio_description)
-   b) Calcule: duration_seconds = ROUNDUP(nombre_de_mots / 3.2, 1 décimale)
-   c) Si duration_seconds < 2.0, ajoute du détail à la narration pour atteindre ~6.4 mots minimum (2.0s)
-   d) Si duration_seconds > 5.5, réduis la narration pour rester ≤ 17.6 mots (5.5s)
+2. 🔴 POUR CHAQUE SCÈNE - CALCUL TTS STRICT:
+   a) Écris d'abord la narration
+   b) Compte le nombre EXACT de MOTS dans la narration
+   c) Applique la formule: duration_seconds = nombre_de_mots / 3.2
+   d) Arrondi à 1 décimale (ex: 3.125 → 3.1, pas 3.2)
+   e) Si duration_seconds < 2.0, ajoute des mots pour atteindre au moins 7 mots (2.2s)
+   f) Si duration_seconds > 5.5, réduis pour rester à maximum 17 mots (5.3s)
 3. Calcule: SUM(duration_seconds) = somme de toutes les durées calculées
 4. Insère dans le JSON:
    - "scene_count": nombre exact de scènes
    - "total_duration_seconds": somme exacte des durées
+
+⚠️ AUTO-VÉRIFICATION AVANT D'ENVOYER:
+Pour chaque scène, vérifie manuellement:
+- Scène 1: [compte] mots ÷ 3.2 = [calcule] → duration_seconds: [vérifie]
+- Scène 2: [compte] mots ÷ 3.2 = [calcule] → duration_seconds: [vérifie]
+- etc...
 
 VÉRIFICATION FINALE (À FAIRE AVANT DE RÉPONDRE):
 - ❌ Si nombre de scènes < 15 ou > 20 → INVALIDE, recommence

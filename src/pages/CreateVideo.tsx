@@ -967,39 +967,59 @@ const CreateVideo = () => {
   const validateTTSDurations = useCallback((script: ScriptData) => {
     // Validate that AI-generated durations match TTS calculation (3.2 words/second)
     const TTS_WORDS_PER_SECOND = 3.2;
-    const TOLERANCE = 0.3; // Allow 0.3 second discrepancy
+    const TOLERANCE = 0.2; // Strict: allow only 0.2 second discrepancy
 
     let issues: string[] = [];
     let totalCalculatedDuration = 0;
+    let totalAIDuration = 0;
+
+    console.log("🔍 Validation TTS - Analyse des durées:");
 
     script.scenes.forEach((scene) => {
       const narration = scene.narration?.trim() || "";
       const wordCount = narration.split(/\s+/).filter(w => w.length > 0).length;
-      const calculatedDuration = Math.ceil((wordCount / TTS_WORDS_PER_SECOND) * 10) / 10;
+      const calculatedDuration = Math.round((wordCount / TTS_WORDS_PER_SECOND) * 10) / 10;
       const aiDuration = scene.duration_seconds ?? 0;
 
       totalCalculatedDuration += calculatedDuration;
+      totalAIDuration += aiDuration;
 
-      if (Math.abs(aiDuration - calculatedDuration) > TOLERANCE) {
+      const diff = Math.abs(aiDuration - calculatedDuration);
+      const icon = diff > TOLERANCE ? "❌" : "✓";
+
+      console.log(
+        `${icon} Scène ${scene.scene_number}: ${wordCount} mots | ` +
+        `Calculé: ${calculatedDuration.toFixed(1)}s | ` +
+        `IA: ${aiDuration.toFixed(1)}s | ` +
+        `Écart: ${diff.toFixed(2)}s`
+      );
+
+      if (diff > TOLERANCE) {
         issues.push(
-          `Scène ${scene.scene_number}: ` +
-          `${wordCount} mots → durée attendue ~${calculatedDuration.toFixed(2)}s, ` +
-          `IA a généré ${aiDuration.toFixed(2)}s`
+          `Scène ${scene.scene_number}: ${wordCount} mots → ` +
+          `attendu ${calculatedDuration.toFixed(1)}s, ` +
+          `généré ${aiDuration.toFixed(1)}s ` +
+          `(écart: ${diff.toFixed(2)}s)`
         );
       }
     });
 
+    console.log(`📊 Total calculé: ${totalCalculatedDuration.toFixed(1)}s | Total IA: ${totalAIDuration.toFixed(1)}s`);
+
     if (issues.length > 0) {
       console.warn("⚠️ Discordances TTS détectées:", issues);
       toast({
-        title: "⚠️ Durées TTS imprécises",
-        description: `${issues.length} scènes ont des durées qui ne correspondent pas à 3.2 mots/sec. Les audios réels seront utilisés.`,
+        title: `⚠️ ${issues.length}/${script.scenes.length} scènes désynchronisées`,
+        description: `Durées IA incorrectes (3.2 mots/sec). Les audios réels corrigeront automatiquement.`,
         variant: "default"
       });
+    } else {
+      console.log("✅ Toutes les durées correspondent au TTS 3.2 mots/sec");
     }
 
     return {
       totalCalculatedDuration,
+      totalAIDuration,
       issueCount: issues.length
     };
   }, [toast]);
