@@ -522,6 +522,12 @@ const CreateVideo = () => {
             return next;
           });
           setSceneVoiceStatus((prev) => ({ ...prev, [scene.scene_number]: "success" }));
+
+          // Show toast with actual duration
+          toast({
+            title: "Voix générée",
+            description: `Scène ${scene.scene_number} - Durée: ${duration.toFixed(2)}s`,
+          });
         };
 
         const cleanupAudioElement = () => {
@@ -544,11 +550,6 @@ const CreateVideo = () => {
         audioElement.addEventListener("error", handleError);
         audioElement.src = objectUrl;
         audioElement.load();
-
-        toast({
-          title: "Voix générée",
-          description: `Scène ${scene.scene_number} générée avec succès.`,
-        });
       } catch (error) {
         console.error("Erreur génération voix Cartesia:", error);
         setSceneVoiceStatus((prev) => ({ ...prev, [scene.scene_number]: "error" }));
@@ -561,6 +562,50 @@ const CreateVideo = () => {
     },
     [toast, estimatedSceneDuration, persistVoiceData],
   );
+
+  const syncDurationsWithAudioDurations = useCallback(() => {
+    // Update scene durations to match actual audio durations
+    const updatedDurations: Record<number, number> = {};
+    let hasChanges = false;
+    let totalAudioDuration = 0;
+    let discordanceCount = 0;
+
+    if (!scriptData) return;
+
+    scriptData.scenes.forEach((scene) => {
+      const actualAudioDuration = sceneAudioDurations[scene.scene_number];
+      const currentSceneDuration = sceneCustomDurations[scene.scene_number] ?? scene.duration_seconds ?? estimatedSceneDuration;
+
+      if (actualAudioDuration) {
+        totalAudioDuration += actualAudioDuration;
+
+        if (Math.abs(actualAudioDuration - currentSceneDuration) > 0.2) {
+          discordanceCount++;
+        }
+
+        if (actualAudioDuration !== currentSceneDuration) {
+          updatedDurations[scene.scene_number] = actualAudioDuration;
+          hasChanges = true;
+        }
+      }
+    });
+
+    if (hasChanges) {
+      setSceneCustomDurations((prev) => ({
+        ...prev,
+        ...updatedDurations,
+      }));
+
+      const discordanceMsg = discordanceCount > 0
+        ? ` (⚠️ ${discordanceCount} scènes différaient de plus de 0.2s)`
+        : "";
+
+      toast({
+        title: "Durées synchronisées",
+        description: `Les durées des scènes correspondent aux audios réels. Total: ${totalAudioDuration.toFixed(1)}s${discordanceMsg}`,
+      });
+    }
+  }, [scriptData, sceneAudioDurations, sceneCustomDurations, estimatedSceneDuration, toast]);
 
   const generateAllVoices = useCallback(async () => {
     if (!scriptData) return;
@@ -590,11 +635,17 @@ const CreateVideo = () => {
     // Final save to ensure all generated audios are persisted in database
     await persistVoiceData(sceneVoiceDataRef.current);
 
+    // Wait for state updates to propagate
+    await new Promise(resolve => setTimeout(resolve, 300));
+
+    // Sync durations with actual audio durations
+    syncDurationsWithAudioDurations();
+
     toast({
       title: "Génération terminée !",
       description: `${voicesToGenerate.length} voix générées et enregistrées avec succès.`,
     });
-  }, [scriptData, sceneAudioUrls, generateVoiceForScene, toast, persistVoiceData]);
+  }, [scriptData, sceneAudioUrls, generateVoiceForScene, toast, persistVoiceData, syncDurationsWithAudioDurations]);
 
   useEffect(() => {
     if (currentStep !== 'images') {
