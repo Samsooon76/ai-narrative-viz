@@ -83,9 +83,12 @@ Tu DOIS répondre UNIQUEMENT avec un objet JSON valide dans ce format exact:
       userPrompt = `Rédige une HISTOIRE dramatique en respectant le format et le rythme indiqués pour le sujet suivant: "${topic}"
 
 ⚠️ CONTRAINTE NUMERO 1 - OBLIGATOIRE - NOMBRE DE SCENES:
-🔴 TU DOIS GÉNÉRER ENTRE 15 ET 20 SCÈNES. PAS 12. PAS 25. ENTRE 15 ET 20.
+🔴 TU DOIS GÉNÉRER ENTRE 15 ET 20 SCÈNES. PAS TOUJOURS 17. VARIE!
+🔴 Le nombre de scènes DOIT ÊTRE DIFFÉRENT à chaque génération (pas toujours 17)
+🔴 Exemples valides: 15, 16, 17, 18, 19, 20 (pas toujours la même)
 🔴 Si tu génères moins de 15 scènes, ta réponse est INVALIDE.
 🔴 Si tu génères plus de 20 scènes, ta réponse est INVALIDE.
+🔴 Si tu génères exactement 17 scènes 10 fois de suite, il y a un bug. VARIE!
 🔴 C'est la contrainte la plus importante. Compte tes scènes avant de répondre.
 
 ⚠️ CONTRAINTE MAJEURE SUR LE CONTENU:
@@ -167,34 +170,46 @@ VÉRIFICATION FINALE (À FAIRE AVANT DE RÉPONDRE):
 - ❌ Si mots de narration < 190 ou > 210 → INVALIDE, recommence
 
 EXEMPLE DE RÉPONSE VALIDE (avec calculs TTS 3.2 mots/sec):
+OPTION 1 - 16 SCÈNES:
 {
   "title": "Titre",
   "music": "Description",
-  "scene_count": 17,
-  "total_duration_seconds": 75.2,
-  "scenes": [
-    {
-      "scene_number": 1,
-      "title": "CONTEXTE",
-      "duration_seconds": 3.8,
-      "visual": "Description détaillée...",
-      "narration": "Nous sommes en 2087. Une ville futuriste s'étend.",
-      "audio_description": "Musique d'ambiance, bruits urbains"
-    },
-    {
-      "scene_number": 2,
-      "title": "RÉVÉLATION",
-      "duration_seconds": 4.4,
-      "visual": "Description détaillée...",
-      "narration": "Douze mots exactement. Douze mots pour faire une phrase de narration claire.",
-      "audio_description": "Sons dramatiques intensifiés"
-    }
-  ]
+  "scene_count": 16,
+  "total_duration_seconds": 63.2,
+  "scenes": [...]
 }
 
-EXPLICATION DES CALCULS POUR CES EXEMPLES:
-- Scène 1: "Nous sommes en 2087. Une ville futuriste s'étend." = 10 mots / 3.2 = 3.125 ≈ 3.2 (arrondi)
-- Scène 2: "Douze mots exactement. Douze mots pour faire une phrase de narration claire." = 14 mots / 3.2 = 4.375 ≈ 4.4 (arrondi)
+OPTION 2 - 18 SCÈNES:
+{
+  "title": "Titre",
+  "music": "Description",
+  "scene_count": 18,
+  "total_duration_seconds": 72.5,
+  "scenes": [...]
+}
+
+OPTION 3 - 19 SCÈNES:
+{
+  "title": "Titre",
+  "music": "Description",
+  "scene_count": 19,
+  "total_duration_seconds": 78.3,
+  "scenes": [...]
+}
+
+Détail d'une scène (format valide):
+{
+  "scene_number": 1,
+  "title": "CONTEXTE",
+  "duration_seconds": 3.8,
+  "visual": "Description détaillée...",
+  "narration": "Nous sommes en 2087. Une ville futuriste s'étend.",
+  "audio_description": "Musique d'ambiance, bruits urbains"
+}
+
+EXPLICATION DES CALCULS:
+- "Nous sommes en 2087. Une ville futuriste s'étend." = 10 mots / 3.2 = 3.125 ≈ 3.1 à 3.2 secondes
+- "Douze mots exactement. Douze mots pour faire une phrase de narration claire." = 14 mots / 3.2 = 4.375 ≈ 4.4 secondes
 
 IMPORTANT - À RELIRE AVANT DE RÉPONDRE:
 - 🔴 Compte les mots de narration: DOIT être 190-210
