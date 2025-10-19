@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { AudioPlayer } from "@/components/ui/audio-player";
-import { Wand2, Check, Loader2, Volume2, RefreshCw, Play } from "lucide-react";
+import { Wand2, Check, Volume2, RefreshCw, Play } from "lucide-react";
 import { GridLoader } from "react-spinners";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useAuth } from "@/lib/use-auth";
@@ -1502,7 +1502,7 @@ const CreateVideo = () => {
           >
             {Object.values(sceneVoiceStatus).some(status => status === 'loading') ? (
               <>
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <GridLoader color="#ffffff" size={6} />
                 Génération des voix en cours...
               </>
             ) : (
@@ -1560,7 +1560,7 @@ const CreateVideo = () => {
                   >
                     {sceneVoiceStatus[scene.scene_number] === "loading" ? (
                       <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <GridLoader color="#ffffff" size={6} />
                         Génération en cours...
                       </>
                     ) : (
@@ -1695,7 +1695,7 @@ const CreateVideo = () => {
               >
                 {isGenerating ? (
                   <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <GridLoader color="#ffffff" size={6} />
                     Génération du script...
                   </>
                 ) : (
@@ -1705,6 +1705,16 @@ const CreateVideo = () => {
                   </>
                 )}
               </Button>
+
+              {isGenerating && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                  <div className="text-center">
+                    <GridLoader color="#3b82f6" size={15} margin={4} />
+                    <p className="text-foreground mt-6 text-lg font-medium">Génération du script en cours...</p>
+                    <p className="text-muted-foreground mt-2 text-sm">Cela peut prendre quelques secondes</p>
+                  </div>
+                </div>
+              )}
             </Card>
         )}
 
@@ -1728,6 +1738,16 @@ const CreateVideo = () => {
                   Passer au storyboard
                 </Button>
               </div>
+
+              {Object.values(sceneVoiceStatus).some(status => status === 'loading') && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                  <div className="text-center">
+                    <GridLoader color="#3b82f6" size={15} margin={4} />
+                    <p className="text-foreground mt-6 text-lg font-medium">Génération des voix en cours...</p>
+                    <p className="text-muted-foreground mt-2 text-sm">{Object.values(sceneVoiceStatus).filter(s => s === 'success').length}/{scriptData?.scenes.length} voix générées</p>
+                  </div>
+                </div>
+              )}
             </Card>
         )}
 
@@ -1749,8 +1769,8 @@ const CreateVideo = () => {
                     <Button onClick={generateAllImages} disabled={isGeneratingImage} className="gap-2 text-sm">
                       {isGeneratingImage ? (
                         <>
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          Génération de {scriptData.scenes.length} images...
+                          <GridLoader color="#ffffff" size={6} />
+                          Génération en cours...
                         </>
                       ) : (
                         <>
@@ -1760,6 +1780,16 @@ const CreateVideo = () => {
                       )}
                     </Button>
                   </div>
+
+                  {isGeneratingImage && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                      <div className="text-center">
+                        <GridLoader color="#3b82f6" size={15} margin={4} />
+                        <p className="text-foreground mt-6 text-lg font-medium">Génération des images en cours...</p>
+                        <p className="text-muted-foreground mt-2 text-sm">Génération de {scriptData.scenes.length} images</p>
+                      </div>
+                    </div>
+                  )}
                 </Card>
               ) : (
                 <>
