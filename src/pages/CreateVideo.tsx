@@ -963,6 +963,47 @@ const CreateVideo = () => {
       localStorage.setItem(`project_${projectId}_step`, currentStep);
     }
   }, [currentStep, projectId]);
+
+  const validateTTSDurations = useCallback((script: ScriptData) => {
+    // Validate that AI-generated durations match TTS calculation (3.2 words/second)
+    const TTS_WORDS_PER_SECOND = 3.2;
+    const TOLERANCE = 0.3; // Allow 0.3 second discrepancy
+
+    let issues: string[] = [];
+    let totalCalculatedDuration = 0;
+
+    script.scenes.forEach((scene) => {
+      const narration = scene.narration?.trim() || "";
+      const wordCount = narration.split(/\s+/).filter(w => w.length > 0).length;
+      const calculatedDuration = Math.ceil((wordCount / TTS_WORDS_PER_SECOND) * 10) / 10;
+      const aiDuration = scene.duration_seconds ?? 0;
+
+      totalCalculatedDuration += calculatedDuration;
+
+      if (Math.abs(aiDuration - calculatedDuration) > TOLERANCE) {
+        issues.push(
+          `Scène ${scene.scene_number}: ` +
+          `${wordCount} mots → durée attendue ~${calculatedDuration.toFixed(2)}s, ` +
+          `IA a généré ${aiDuration.toFixed(2)}s`
+        );
+      }
+    });
+
+    if (issues.length > 0) {
+      console.warn("⚠️ Discordances TTS détectées:", issues);
+      toast({
+        title: "⚠️ Durées TTS imprécises",
+        description: `${issues.length} scènes ont des durées qui ne correspondent pas à 3.2 mots/sec. Les audios réels seront utilisés.`,
+        variant: "default"
+      });
+    }
+
+    return {
+      totalCalculatedDuration,
+      issueCount: issues.length
+    };
+  }, [toast]);
+
   const generateScript = async () => {
     if (!topic.trim() || !projectName.trim()) {
       toast({
@@ -986,6 +1027,9 @@ const CreateVideo = () => {
 
       setScriptData(data.script);
 
+      // Validate TTS durations
+      const validation = validateTTSDurations(data.script);
+
       // Initialize scene durations from script if provided
       if (data.script?.scenes) {
         const initialDurations: Record<number, number> = {};
@@ -1000,10 +1044,10 @@ const CreateVideo = () => {
       }
 
       setCurrentStep('script');
-      
+
       toast({
         title: "Script généré !",
-        description: "Vous pouvez maintenant le réviser avant de continuer"
+        description: `${data.script.scenes.length} scènes, durée totale estimée: ${validation.totalCalculatedDuration.toFixed(1)}s`
       });
     } catch (error) {
       console.error('Erreur génération script:', error);
