@@ -508,6 +508,13 @@ const CreateVideo = () => {
 
         const finalizeVoice = (rawDuration: number) => {
           const duration = Number.isFinite(rawDuration) && rawDuration > 0 ? rawDuration : estimatedSceneDuration;
+
+          // Update scene duration to match actual audio duration
+          setSceneCustomDurations((prev) => ({
+            ...prev,
+            [scene.scene_number]: duration,
+          }));
+
           setSceneAudioDurations((prev) => ({ ...prev, [scene.scene_number]: duration }));
           setSceneVoiceData((prev) => {
             const next = {
@@ -563,49 +570,19 @@ const CreateVideo = () => {
     [toast, estimatedSceneDuration, persistVoiceData],
   );
 
-  const syncDurationsWithAudioDurations = useCallback(() => {
-    // Update scene durations to match actual audio durations
-    const updatedDurations: Record<number, number> = {};
-    let hasChanges = false;
-    let totalAudioDuration = 0;
-    let discordanceCount = 0;
-
-    if (!scriptData) return;
+  const calculateTotalDuration = useCallback(() => {
+    // Calculate total duration from actual audio durations
+    let totalDuration = 0;
+    if (!scriptData) return 0;
 
     scriptData.scenes.forEach((scene) => {
-      const actualAudioDuration = sceneAudioDurations[scene.scene_number];
-      const currentSceneDuration = sceneCustomDurations[scene.scene_number] ?? scene.duration_seconds ?? estimatedSceneDuration;
-
-      if (actualAudioDuration) {
-        totalAudioDuration += actualAudioDuration;
-
-        if (Math.abs(actualAudioDuration - currentSceneDuration) > 0.2) {
-          discordanceCount++;
-        }
-
-        if (actualAudioDuration !== currentSceneDuration) {
-          updatedDurations[scene.scene_number] = actualAudioDuration;
-          hasChanges = true;
-        }
+      const duration = sceneCustomDurations[scene.scene_number];
+      if (duration) {
+        totalDuration += duration;
       }
     });
-
-    if (hasChanges) {
-      setSceneCustomDurations((prev) => ({
-        ...prev,
-        ...updatedDurations,
-      }));
-
-      const discordanceMsg = discordanceCount > 0
-        ? ` (⚠️ ${discordanceCount} scènes différaient de plus de 0.2s)`
-        : "";
-
-      toast({
-        title: "Durées synchronisées",
-        description: `Les durées des scènes correspondent aux audios réels. Total: ${totalAudioDuration.toFixed(1)}s${discordanceMsg}`,
-      });
-    }
-  }, [scriptData, sceneAudioDurations, sceneCustomDurations, estimatedSceneDuration, toast]);
+    return totalDuration;
+  }, [scriptData, sceneCustomDurations]);
 
   const generateAllVoices = useCallback(async () => {
     if (!scriptData) return;
@@ -635,17 +612,14 @@ const CreateVideo = () => {
     // Final save to ensure all generated audios are persisted in database
     await persistVoiceData(sceneVoiceDataRef.current);
 
-    // Wait for state updates to propagate
-    await new Promise(resolve => setTimeout(resolve, 300));
-
-    // Sync durations with actual audio durations
-    syncDurationsWithAudioDurations();
+    // Calculate total duration from actual audio durations
+    const totalDuration = calculateTotalDuration();
 
     toast({
       title: "Génération terminée !",
-      description: `${voicesToGenerate.length} voix générées et enregistrées avec succès.`,
+      description: `${voicesToGenerate.length} voix générées - Durée totale: ${totalDuration.toFixed(1)}s`,
     });
-  }, [scriptData, sceneAudioUrls, generateVoiceForScene, toast, persistVoiceData, syncDurationsWithAudioDurations]);
+  }, [scriptData, sceneAudioUrls, generateVoiceForScene, toast, persistVoiceData, calculateTotalDuration]);
 
   useEffect(() => {
     if (currentStep !== 'images') {
@@ -964,65 +938,6 @@ const CreateVideo = () => {
     }
   }, [currentStep, projectId]);
 
-  const validateTTSDurations = useCallback((script: ScriptData) => {
-    // Validate that AI-generated durations match TTS calculation (3.2 words/second)
-    const TTS_WORDS_PER_SECOND = 3.2;
-    const TOLERANCE = 0.2; // Strict: allow only 0.2 second discrepancy
-
-    let issues: string[] = [];
-    let totalCalculatedDuration = 0;
-    let totalAIDuration = 0;
-
-    console.log("🔍 Validation TTS - Analyse des durées:");
-
-    script.scenes.forEach((scene) => {
-      const narration = scene.narration?.trim() || "";
-      const wordCount = narration.split(/\s+/).filter(w => w.length > 0).length;
-      const calculatedDuration = Math.round((wordCount / TTS_WORDS_PER_SECOND) * 10) / 10;
-      const aiDuration = scene.duration_seconds ?? 0;
-
-      totalCalculatedDuration += calculatedDuration;
-      totalAIDuration += aiDuration;
-
-      const diff = Math.abs(aiDuration - calculatedDuration);
-      const icon = diff > TOLERANCE ? "❌" : "✓";
-
-      console.log(
-        `${icon} Scène ${scene.scene_number}: ${wordCount} mots | ` +
-        `Calculé: ${calculatedDuration.toFixed(1)}s | ` +
-        `IA: ${aiDuration.toFixed(1)}s | ` +
-        `Écart: ${diff.toFixed(2)}s`
-      );
-
-      if (diff > TOLERANCE) {
-        issues.push(
-          `Scène ${scene.scene_number}: ${wordCount} mots → ` +
-          `attendu ${calculatedDuration.toFixed(1)}s, ` +
-          `généré ${aiDuration.toFixed(1)}s ` +
-          `(écart: ${diff.toFixed(2)}s)`
-        );
-      }
-    });
-
-    console.log(`📊 Total calculé: ${totalCalculatedDuration.toFixed(1)}s | Total IA: ${totalAIDuration.toFixed(1)}s`);
-
-    if (issues.length > 0) {
-      console.warn("⚠️ Discordances TTS détectées:", issues);
-      toast({
-        title: `⚠️ ${issues.length}/${script.scenes.length} scènes désynchronisées`,
-        description: `Durées IA incorrectes (3.2 mots/sec). Les audios réels corrigeront automatiquement.`,
-        variant: "default"
-      });
-    } else {
-      console.log("✅ Toutes les durées correspondent au TTS 3.2 mots/sec");
-    }
-
-    return {
-      totalCalculatedDuration,
-      totalAIDuration,
-      issueCount: issues.length
-    };
-  }, [toast]);
 
   const generateScript = async () => {
     if (!topic.trim() || !projectName.trim()) {
@@ -1047,27 +962,11 @@ const CreateVideo = () => {
 
       setScriptData(data.script);
 
-      // Validate TTS durations
-      const validation = validateTTSDurations(data.script);
-
-      // Initialize scene durations from script if provided
-      if (data.script?.scenes) {
-        const initialDurations: Record<number, number> = {};
-        data.script.scenes.forEach((scene: ScriptScene) => {
-          if (typeof scene.duration_seconds === 'number' && scene.duration_seconds > 0) {
-            initialDurations[scene.scene_number] = scene.duration_seconds;
-          }
-        });
-        if (Object.keys(initialDurations).length > 0) {
-          setSceneCustomDurations(initialDurations);
-        }
-      }
-
       setCurrentStep('script');
 
       toast({
         title: "Script généré !",
-        description: `${data.script.scenes.length} scènes, durée totale estimée: ${validation.totalCalculatedDuration.toFixed(1)}s`
+        description: `${data.script.scenes.length} scènes - Les durées réelles seront mesurées à la génération des audios`,
       });
     } catch (error) {
       console.error('Erreur génération script:', error);
