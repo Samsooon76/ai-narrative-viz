@@ -245,15 +245,16 @@ const CreateVideo = () => {
   const voiceAudioClips = useMemo(() => {
     if (!scriptData || !scriptData.scenes.length) return [] as VoiceClip[];
 
-    // Calculate cumulative start positions based on actual scene durations
+    // Calculate cumulative start positions based on ACTUAL audio durations
     const sceneStartPositions: Record<number, number> = {};
     let cumulativeTime = 0;
     scriptData.scenes.forEach((scene) => {
       sceneStartPositions[scene.scene_number] = cumulativeTime;
-      // Use actual scene duration, fallback to AI duration, then estimated duration
+      // Priority: real audio duration > custom duration > script duration > estimated
+      const audioDuration = sceneAudioDurations?.[scene.scene_number];
       const customDuration = sceneCustomDurations?.[scene.scene_number];
-      const aiDuration = scene.duration_seconds ?? 0;
-      const effectiveDuration = customDuration ?? (aiDuration > 0 ? aiDuration : estimatedSceneDuration);
+      const scriptDuration = scene.duration_seconds ?? 0;
+      const effectiveDuration = audioDuration ?? customDuration ?? (scriptDuration > 0 ? scriptDuration : estimatedSceneDuration);
       cumulativeTime += effectiveDuration;
     });
 
@@ -285,7 +286,7 @@ const CreateVideo = () => {
       });
     });
     return clips;
-  }, [scriptData, sceneAudioUrls, sceneAudioDurations, estimatedSceneDuration, sceneVoiceData, voiceOptions, sceneAudioSpeeds, sceneAudioClipEdits, sceneCustomDurations]);
+  }, [scriptData, sceneAudioUrls, sceneAudioDurations, sceneCustomDurations, estimatedSceneDuration, sceneVoiceData, voiceOptions, sceneAudioSpeeds, sceneAudioClipEdits]);
 
 
   const selectedVoice = useMemo(() => {
