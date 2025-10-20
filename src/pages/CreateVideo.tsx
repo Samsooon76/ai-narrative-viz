@@ -1836,7 +1836,7 @@ const CreateVideo = () => {
                         styleOverrideId: sceneStyleOverrides[scene.scene_number],
                         visual: scene.visual,
                         status,
-                        durationSeconds: scene.duration_seconds ?? estimatedSceneDuration,
+                        durationSeconds: sceneCustomDurations[scene.scene_number] ?? scene.duration_seconds ?? estimatedSceneDuration,
                       };
                     })}
                     onRegenerateImage={regenerateImage}
