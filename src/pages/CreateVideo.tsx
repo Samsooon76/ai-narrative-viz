@@ -666,6 +666,15 @@ const CreateVideo = () => {
     });
   }, [scriptData, sceneAudioUrls, generateVoiceForScene, toast, persistVoiceData, calculateTotalDuration]);
 
+  // Auto-sync durations when audios are loaded
+  useEffect(() => {
+    if (currentStep === 'script' && scriptData && Object.keys(sceneAudioDurations).length > 0 && !Object.keys(sceneCustomDurations).length) {
+      // If we have audios but no custom durations set, auto-sync
+      console.log("📡 Auto-syncing durations from loaded audios...");
+      syncAllDurationsWithAudio();
+    }
+  }, [currentStep, scriptData, sceneAudioDurations, sceneCustomDurations, syncAllDurationsWithAudio]);
+
   useEffect(() => {
     if (currentStep !== 'images') {
       timelinePlaybackControllerRef.current?.pause();
