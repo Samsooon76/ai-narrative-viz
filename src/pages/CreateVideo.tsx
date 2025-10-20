@@ -584,6 +584,51 @@ const CreateVideo = () => {
     return totalDuration;
   }, [scriptData, sceneCustomDurations]);
 
+  const syncAllDurationsWithAudio = useCallback(async () => {
+    if (!scriptData) return;
+
+    console.log("🔄 Synchronisation des durées avec les audios...");
+
+    let syncedCount = 0;
+    const updatedDurations: Record<number, number> = {};
+
+    scriptData.scenes.forEach((scene) => {
+      const audioDuration = sceneAudioDurations[scene.scene_number];
+      if (audioDuration && audioDuration > 0) {
+        updatedDurations[scene.scene_number] = audioDuration;
+        syncedCount++;
+        console.log(
+          `✓ Scène ${scene.scene_number}: ${audioDuration.toFixed(2)}s`
+        );
+      }
+    });
+
+    if (syncedCount > 0) {
+      setSceneCustomDurations((prev) => ({
+        ...prev,
+        ...updatedDurations,
+      }));
+
+      // Persist the synced durations
+      await persistVoiceData(sceneVoiceDataRef.current, sceneAudioClipEdits, updatedDurations);
+
+      const totalDuration = Object.values(updatedDurations).reduce((a, b) => a + b, 0);
+
+      toast({
+        title: "✓ Durées synchronisées !",
+        description: `${syncedCount} scènes mises à jour - Durée totale: ${totalDuration.toFixed(1)}s`,
+      });
+
+      console.log(`✅ ${syncedCount} scènes synchronisées - Total: ${totalDuration.toFixed(1)}s`);
+    } else {
+      toast({
+        title: "Aucune synchronisation",
+        description: "Aucun audio trouvé pour synchroniser les durées.",
+        variant: "default"
+      });
+    }
+  }, [scriptData, sceneAudioDurations, persistVoiceData, sceneAudioClipEdits, toast]);
+
   const generateAllVoices = useCallback(async () => {
     if (!scriptData) return;
 
@@ -1501,24 +1546,36 @@ const CreateVideo = () => {
         </div>
 
         <div className="flex flex-col gap-2 rounded-lg border border-primary/20 bg-primary/5 p-4">
-          <Button
-            onClick={generateAllVoices}
-            disabled={Object.values(sceneVoiceStatus).some(status => status === 'loading') || !scriptData?.scenes.length}
-            className="gap-2 w-full"
-            size="lg"
-          >
-            {Object.values(sceneVoiceStatus).some(status => status === 'loading') ? (
-              <>
-                <GridLoader color="#ffffff" size={6} />
-                Génération des voix en cours...
-              </>
-            ) : (
-              <>
-                <Wand2 className="h-4 w-4" />
-                Générer tous les audios ({scriptData?.scenes.length ?? 0} scènes)
-              </>
-            )}
-          </Button>
+          <div className="flex gap-2 w-full">
+            <Button
+              onClick={generateAllVoices}
+              disabled={Object.values(sceneVoiceStatus).some(status => status === 'loading') || !scriptData?.scenes.length}
+              className="gap-2 flex-1"
+              size="lg"
+            >
+              {Object.values(sceneVoiceStatus).some(status => status === 'loading') ? (
+                <>
+                  <GridLoader color="#ffffff" size={6} />
+                  Génération en cours...
+                </>
+              ) : (
+                <>
+                  <Wand2 className="h-4 w-4" />
+                  Générer tous les audios
+                </>
+              )}
+            </Button>
+            <Button
+              onClick={syncAllDurationsWithAudio}
+              disabled={!Object.values(sceneAudioDurations).some(d => d > 0)}
+              variant="outline"
+              className="gap-2"
+              size="lg"
+              title="Synchronise toutes les scènes avec les vraies durées des audios"
+            >
+              🔄 Sync
+            </Button>
+          </div>
           {Object.values(sceneVoiceStatus).filter(s => s === 'success').length > 0 && (
             <p className="text-xs text-center text-emerald-400">
               ✓ {Object.values(sceneVoiceStatus).filter(s => s === 'success').length}/{scriptData?.scenes.length} voix générées
