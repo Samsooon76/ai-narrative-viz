@@ -1556,36 +1556,24 @@ const CreateVideo = () => {
         </div>
 
         <div className="flex flex-col gap-2 rounded-lg border border-primary/20 bg-primary/5 p-4">
-          <div className="flex gap-2 w-full">
-            <Button
-              onClick={generateAllVoices}
-              disabled={Object.values(sceneVoiceStatus).some(status => status === 'loading') || !scriptData?.scenes.length}
-              className="gap-2 flex-1"
-              size="lg"
-            >
-              {Object.values(sceneVoiceStatus).some(status => status === 'loading') ? (
-                <>
-                  <GridLoader color="#ffffff" size={6} />
-                  Génération en cours...
-                </>
-              ) : (
-                <>
-                  <Wand2 className="h-4 w-4" />
-                  Générer tous les audios
-                </>
-              )}
-            </Button>
-            <Button
-              onClick={syncAllDurationsWithAudio}
-              disabled={!Object.values(sceneAudioDurations).some(d => d > 0)}
-              variant="outline"
-              className="gap-2"
-              size="lg"
-              title="Synchronise toutes les scènes avec les vraies durées des audios"
-            >
-              🔄 Sync
-            </Button>
-          </div>
+          <Button
+            onClick={generateAllVoices}
+            disabled={Object.values(sceneVoiceStatus).some(status => status === 'loading') || !scriptData?.scenes.length}
+            className="gap-2 w-full"
+            size="lg"
+          >
+            {Object.values(sceneVoiceStatus).some(status => status === 'loading') ? (
+              <>
+                <GridLoader color="#ffffff" size={6} />
+                Génération des voix en cours...
+              </>
+            ) : (
+              <>
+                <Wand2 className="h-4 w-4" />
+                Générer tous les audios ({scriptData?.scenes.length ?? 0} scènes)
+              </>
+            )}
+          </Button>
           {Object.values(sceneVoiceStatus).filter(s => s === 'success').length > 0 && (
             <p className="text-xs text-center text-emerald-400">
               ✓ {Object.values(sceneVoiceStatus).filter(s => s === 'success').length}/{scriptData?.scenes.length} voix générées
@@ -1867,6 +1855,24 @@ const CreateVideo = () => {
                 </Card>
               ) : (
                 <>
+                  <Card className="rounded-3xl border border-white/10 bg-black/30 p-4 backdrop-blur-xl">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <h3 className="text-sm font-semibold text-foreground">Synchronisation</h3>
+                        <p className="text-xs text-muted-foreground">Aligne toutes les scènes avec les vraies durées des audios</p>
+                      </div>
+                      <Button
+                        onClick={syncAllDurationsWithAudio}
+                        disabled={!Object.values(sceneAudioDurations).some(d => d > 0)}
+                        variant="outline"
+                        className="gap-2 whitespace-nowrap"
+                        title="Synchronise toutes les scènes avec les vraies durées des audios"
+                      >
+                        🔄 Synchroniser
+                      </Button>
+                    </div>
+                  </Card>
+
                   <VideoTimeline
                     timelineDuration={timelineDuration}
                     audioClips={voiceAudioClips}
