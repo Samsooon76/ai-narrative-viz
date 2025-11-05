@@ -13,6 +13,7 @@ import CreateVideo from "./pages/CreateVideo";
 import Pricing from "./pages/Pricing";
 import HowItWorks from "./pages/HowItWorks";
 import Account from "./pages/Account";
+import Checkout from "./pages/Checkout";
 import NotFound from "./pages/NotFound";
 import AuthModal from "@/components/auth/AuthModal";
 import { useAuthModal } from "@/lib/auth-modal-context";
@@ -37,6 +38,7 @@ const AppContent: React.FC = () => {
         <Route path="/" element={<Index />} />
         <Route path="/auth" element={<Auth />} />
         <Route path="/pricing" element={<Pricing />} />
+        <Route path="/checkout/:planId" element={<Checkout />} />
         <Route path="/process" element={<HowItWorks />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/account" element={<Account />} />

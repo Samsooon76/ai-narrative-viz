@@ -2,13 +2,14 @@ import { motion } from "framer-motion";
 import { Check, Sparkles, Zap, Users } from "lucide-react";
 import { Navbar } from "@/components/ui/navbar";
 import { Button } from "@/components/ui/button";
-import { Link, Navigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import Aurora from "@/components/Aurora";
 import { useAuth } from "@/lib/use-auth";
 
 const pricingTiers = [
   {
     name: "Starter",
+    planId: "starter",
     price: "69€",
     period: "/mois",
     videos: "10 vidéos",
@@ -26,6 +27,7 @@ const pricingTiers = [
   },
   {
     name: "Pro",
+    planId: "pro",
     price: "129€",
     period: "/mois",
     videos: "25 vidéos",
@@ -44,6 +46,7 @@ const pricingTiers = [
   },
   {
     name: "Business",
+    planId: "business",
     price: "169€",
     period: "/mois",
     videos: "50 vidéos",
@@ -82,10 +85,6 @@ const featureHighlights = [
 
 const Pricing = () => {
   const { user } = useAuth();
-
-  if (user) {
-    return <Navigate to="/dashboard" replace />;
-  }
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-background via-background to-muted/20 text-foreground">
@@ -153,7 +152,7 @@ const Pricing = () => {
                     tier.highlight ? "bg-primary text-primary-foreground hover:opacity-90" : "bg-white/10 text-foreground hover:bg-white/20"
                   }`}
                 >
-                  <Link to={tier.name === "Business" ? "/contact" : "/auth"}>{tier.cta}</Link>
+                  <Link to={tier.name === "Business" ? "/contact" : user ? `/checkout/${tier.planId}` : "/auth"}>{tier.cta}</Link>
                 </Button>
               </motion.div>
             ))}
