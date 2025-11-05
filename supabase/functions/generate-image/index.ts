@@ -1,4 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import {
+  createServiceClient,
+  getUserFromAuth,
+  checkSubscriptionMiddleware,
+} from "../_shared/subscription-middleware.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -171,6 +176,31 @@ serve(async (req) => {
   }
 
   try {
+    // ============================================================================
+    // MIDDLEWARE: Check user authentication and subscription quota
+    // ============================================================================
+    const supabase = createServiceClient();
+    const { user, error: authError } = await getUserFromAuth(req, supabase);
+
+    if (authError || !user) {
+      return new Response(
+        JSON.stringify({ error: authError || 'Unauthorized' }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 401,
+        }
+      );
+    }
+
+    // Check if user has quota available
+    const quotaCheck = await checkSubscriptionMiddleware(user.id, supabase, corsHeaders);
+    if (quotaCheck) {
+      return quotaCheck;
+    }
+
+    console.log(`✓ User ${user.email} authorized for image generation`);
+    // ============================================================================
+
     const body = await req.json();
     const {
       prompt,

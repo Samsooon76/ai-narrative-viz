@@ -20,6 +20,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import type { Database } from "@/integrations/supabase/types";
 import PageShell from "@/components/layout/PageShell";
+import { SubscriptionStatus } from "@/components/SubscriptionStatus";
 
 type VideoProjectRow = Database["public"]["Tables"]["video_projects"]["Row"];
 
@@ -224,38 +225,47 @@ const Dashboard = () => {
           </div>
         </header>
 
-        <section className="grid gap-4 md:grid-cols-3">
-          <Card className="border border-white/10 bg-black/25 p-5 backdrop-blur-lg">
-            <div className="flex items-center justify-between">
-              <div className="text-sm font-medium text-muted-foreground">Projets actifs</div>
-              <Badge variant="secondary" className="border-none text-[10px] uppercase">
-                Studio
-              </Badge>
-            </div>
-            <p className="mt-4 text-3xl font-semibold text-foreground">{projects.length}</p>
-            <p className="mt-1 text-xs text-muted-foreground">incluant les brouillons en cours</p>
-          </Card>
-          <Card className="border border-white/10 bg-black/25 p-5 backdrop-blur-lg">
-            <div className="flex items-center justify-between">
-              <div className="text-sm font-medium text-muted-foreground">Terminés</div>
-              <Video className="h-4 w-4 text-primary" />
-            </div>
-            <p className="mt-4 text-3xl font-semibold text-foreground">
-              {projects.filter((project) => project.status === "completed").length}
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">Prêts pour l'export</p>
-          </Card>
-          <Card className="border border-white/10 bg-black/25 p-5 backdrop-blur-lg">
-            <div className="flex items-center justify-between">
-              <div className="text-sm font-medium text-muted-foreground">Dernière mise à jour</div>
-              <Archive className="h-4 w-4 text-accent" />
-            </div>
-            <p className="mt-4 text-3xl font-semibold text-foreground">
-              {projects[0] ? new Date(projects[0].created_at).toLocaleDateString("fr-FR") : "-"}
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">Date du dernier projet ajouté</p>
-          </Card>
-        </section>
+        {/* Subscription Status and Stats */}
+        <div className="grid gap-4 lg:grid-cols-4">
+          {/* Subscription Status - Takes 1 column on desktop */}
+          <div className="lg:col-span-1">
+            <SubscriptionStatus />
+          </div>
+
+          {/* Stats Cards - Take 3 columns on desktop */}
+          <div className="lg:col-span-3 grid gap-4 md:grid-cols-3">
+            <Card className="border border-white/10 bg-black/25 p-5 backdrop-blur-lg">
+              <div className="flex items-center justify-between">
+                <div className="text-sm font-medium text-muted-foreground">Projets actifs</div>
+                <Badge variant="secondary" className="border-none text-[10px] uppercase">
+                  Studio
+                </Badge>
+              </div>
+              <p className="mt-4 text-3xl font-semibold text-foreground">{projects.length}</p>
+              <p className="mt-1 text-xs text-muted-foreground">incluant les brouillons en cours</p>
+            </Card>
+            <Card className="border border-white/10 bg-black/25 p-5 backdrop-blur-lg">
+              <div className="flex items-center justify-between">
+                <div className="text-sm font-medium text-muted-foreground">Terminés</div>
+                <Video className="h-4 w-4 text-primary" />
+              </div>
+              <p className="mt-4 text-3xl font-semibold text-foreground">
+                {projects.filter((project) => project.status === "completed").length}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">Prêts pour l'export</p>
+            </Card>
+            <Card className="border border-white/10 bg-black/25 p-5 backdrop-blur-lg">
+              <div className="flex items-center justify-between">
+                <div className="text-sm font-medium text-muted-foreground">Dernière mise à jour</div>
+                <Archive className="h-4 w-4 text-accent" />
+              </div>
+              <p className="mt-4 text-3xl font-semibold text-foreground">
+                {projects[0] ? new Date(projects[0].created_at).toLocaleDateString("fr-FR") : "-"}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">Date du dernier projet ajouté</p>
+            </Card>
+          </div>
+        </div>
 
         <section className="space-y-6">
           <div className="flex items-center justify-between">

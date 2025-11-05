@@ -15,6 +15,7 @@ import { toast } from "@/hooks/use-toast";
 import { VideoTimeline, type TimelinePlaybackController } from "@/components/VideoTimeline";
 import { cn } from "@/lib/utils";
 import PageShell from "@/components/layout/PageShell";
+import { useSubscription } from "@/hooks/use-subscription";
 import {
   Select,
   SelectContent,
@@ -582,6 +583,7 @@ const STUDIO_STEPS: { id: Step; label: string; description: string }[] = [
 
 const CreateVideo = () => {
   const { user, loading } = useAuth();
+  const { subscription, isNearLimit, isAtLimit, remainingVideos } = useSubscription();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [currentStep, setCurrentStep] = useState<Step>('topic');
@@ -3367,12 +3369,32 @@ useEffect(() => {
         <Card className="space-y-6 rounded-3xl border border-white/10 bg-black/30 p-6 backdrop-blur-xl">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div className="space-y-2">
-                <Badge variant="outline" className="w-fit border-primary/40 text-primary">
-                  Studio vidéo
-                </Badge>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Badge variant="outline" className="w-fit border-primary/40 text-primary">
+                    Studio vidéo
+                  </Badge>
+                  {/* Quota Indicator */}
+                  {subscription && (
+                    <Badge
+                      variant={isAtLimit ? "destructive" : isNearLimit ? "outline" : "secondary"}
+                      className={cn(
+                        "w-fit text-xs",
+                        isAtLimit && "border-red-500 text-red-500",
+                        isNearLimit && "border-orange-500 text-orange-500"
+                      )}
+                    >
+                      {subscription.videosGenerated}/{subscription.videosQuota} vidéos ce mois
+                    </Badge>
+                  )}
+                </div>
                 <h1 className="text-3xl font-semibold text-foreground">Montez votre projet</h1>
                 <p className="text-sm text-muted-foreground">
                   Progressez du brief à l&apos;export sans quitter cette interface.
+                  {remainingVideos > 0 && remainingVideos <= 3 && (
+                    <span className="ml-1 text-orange-600 font-medium">
+                      ({remainingVideos} vidéo{remainingVideos > 1 ? 's' : ''} restante{remainingVideos > 1 ? 's' : ''})
+                    </span>
+                  )}
                 </p>
               </div>
               <div className="space-y-1 text-sm text-muted-foreground lg:text-right">

@@ -1,6 +1,12 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { encode as encodeBase64 } from "https://deno.land/std@0.168.0/encoding/base64.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
+import {
+  createServiceClient,
+  getUserFromAuth,
+  checkSubscriptionMiddleware,
+  incrementVideoCount,
+} from "../_shared/subscription-middleware.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -209,6 +215,31 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
+
+  // ============================================================================
+  // MIDDLEWARE: Check user authentication and subscription quota
+  // ============================================================================
+  const supabaseClient = createServiceClient();
+  const { user, error: authError } = await getUserFromAuth(req, supabaseClient);
+
+  if (authError || !user) {
+    return new Response(
+      JSON.stringify({ error: authError || 'Unauthorized' }),
+      {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 401,
+      }
+    );
+  }
+
+  // Check if user has quota available
+  const quotaCheck = await checkSubscriptionMiddleware(user.id, supabaseClient, corsHeaders);
+  if (quotaCheck) {
+    return quotaCheck;
+  }
+
+  console.log(`✓ User ${user.email} authorized for video generation`);
+  // ============================================================================
 
   try {
     const requestPayload = await req.json();
@@ -426,11 +457,26 @@ serve(async (req) => {
           .eq('id', projectId);
       }
 
+      // ============================================================================
+      // INCREMENT VIDEO COUNT: Video generation successful
+      // ============================================================================
+      console.log(`✓ Video generated successfully, incrementing count for user ${user.id}`);
+      const countResult = await incrementVideoCount(user.id, supabaseClient);
+
+      if (countResult.success) {
+        console.log(`✓ Video count incremented: ${countResult.newCount}/${countResult.quota}`);
+      } else {
+        console.error(`❌ Failed to increment video count for user ${user.id}`);
+      }
+      // ============================================================================
+
       return new Response(
-        JSON.stringify({ 
+        JSON.stringify({
           status: 'completed',
           message: 'Vidéo générée avec succès',
           videoUrl: publicUrl,
+          videosGenerated: countResult.newCount,
+          videosQuota: countResult.quota,
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
