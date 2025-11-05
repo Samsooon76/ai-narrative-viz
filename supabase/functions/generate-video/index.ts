@@ -282,10 +282,18 @@ serve(async (req) => {
 
       const trimmedDuration = typeof videoDuration === 'string' ? videoDuration.trim() : undefined;
       if (trimmedDuration) {
-        if (trimmedDuration === '6' || trimmedDuration === '10') {
+        const allowedDurations = new Set(['1','2','3','4','5','6','7','8','9','10','12','15','20','30']);
+        if (allowedDurations.has(trimmedDuration)) {
           falPayload.duration = trimmedDuration;
         } else {
-          console.log(`Durée vidéo non supportée '${trimmedDuration}', la valeur par défaut sera utilisée.`);
+          const numericDuration = Number(trimmedDuration);
+          if (Number.isFinite(numericDuration)) {
+            const clamped = Math.min(30, Math.max(1, Math.round(numericDuration)));
+            falPayload.duration = String(clamped);
+            console.log(`Durée vidéo '${trimmedDuration}' ajustée à ${falPayload.duration}s.`);
+          } else {
+            console.log(`Durée vidéo non supportée '${trimmedDuration}', la valeur par défaut sera utilisée.`);
+          }
         }
       }
 
@@ -293,14 +301,14 @@ serve(async (req) => {
         falPayload.prompt_optimizer = promptOptimizer;
       }
 
-      console.log('Mise en file Fal.ai Hailuo-02 Fast (queue API)...');
+      console.log('Mise en file Fal.ai Seedance v1 Lite (queue API)...');
 
       const falHeaders = {
         'Authorization': `Key ${FAL_KEY}`,
         'Content-Type': 'application/json',
       };
 
-      const queueResponse = await fetch('https://queue.fal.run/fal-ai/minimax/hailuo-02-fast/image-to-video', {
+      const queueResponse = await fetch('https://queue.fal.run/fal-ai/bytedance/seedance/v1/lite/image-to-video', {
         method: 'POST',
         headers: falHeaders,
         body: JSON.stringify(falPayload),

@@ -50,6 +50,11 @@ const AppContent: React.FC = () => {
 };
 
 const App: React.FC = () => {
+  const basename =
+    import.meta.env.BASE_URL === "/"
+      ? "/"
+      : import.meta.env.BASE_URL.replace(/\/$/, "");
+
   return (
     <ThemeProvider>
       <QueryClientProvider client={queryClient}>
@@ -57,6 +62,7 @@ const App: React.FC = () => {
           <Toaster />
           <Sonner />
           <BrowserRouter
+            basename={basename}
             future={{
               v7_startTransition: true,
               v7_relativeSplatPath: true,

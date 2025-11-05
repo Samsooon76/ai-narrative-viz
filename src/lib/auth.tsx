@@ -5,6 +5,17 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 import { AuthContext, type AuthContextType } from './auth-context';
 
+const BASE_PATH =
+  import.meta.env.BASE_URL === '/' ? '' : import.meta.env.BASE_URL.replace(/\/$/, '');
+
+const buildAppUrl = (path = '') => {
+  if (typeof window === 'undefined') return undefined;
+
+  const normalizedPath = path ? `/${path.replace(/^\//, '')}` : '';
+
+  return `${window.location.origin}${BASE_PATH}${normalizedPath}`;
+};
+
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
@@ -43,13 +54,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const signUp = async (email: string, password: string, fullName?: string) => {
-    const redirectUrl = `${window.location.origin}/dashboard`;
+    const redirectUrl = buildAppUrl('dashboard');
     
     const { error } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        emailRedirectTo: redirectUrl,
+        ...(redirectUrl ? { emailRedirectTo: redirectUrl } : {}),
         data: {
           full_name: fullName
         }
@@ -77,19 +88,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const signInWithGoogle = async () => {
-    const redirectTo =
-      typeof window !== "undefined" ? `${window.location.origin}/dashboard` : undefined;
+    const redirectTo = buildAppUrl('dashboard');
 
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: redirectTo
-        ? {
-            redirectTo,
-            queryParams: { prompt: "select_account" },
-          }
-        : {
-            queryParams: { prompt: "select_account" },
-          },
+      options: {
+        ...(redirectTo ? { redirectTo } : {}),
+        queryParams: { prompt: "select_account" },
+      },
     });
 
     if (error) {
@@ -115,7 +121,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       });
     } else {
       // Redirect to landing page after successful logout
-      window.location.href = '/';
+      const homePath = BASE_PATH ? `${BASE_PATH}/` : '/';
+      window.location.href = homePath;
     }
   };
 

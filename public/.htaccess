@@ -1,0 +1,10 @@
+RewriteEngine On
+RewriteBase /video/
+
+# Let existing files and directories pass through
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# Fallback every other request to the SPA entry point
+RewriteRule ^ /video/index.html [L]

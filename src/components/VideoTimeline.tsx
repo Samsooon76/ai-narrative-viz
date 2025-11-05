@@ -23,9 +23,10 @@ import {
   Volume2,
   Plus,
   Download,
+  Check,
 } from "lucide-react";
 
-type SceneStatus = "loading" | "ready" | "generating-video" | "error" | "empty";
+type SceneStatus = "loading" | "ready" | "generating-video" | "error" | "empty" | "awaiting-selection";
 
 interface TimelineAudioClip {
   id: string;
@@ -34,12 +35,17 @@ interface TimelineAudioClip {
   duration: number;
   accentClassName?: string;
   description?: string;
+  sceneNumber?: number;
+  waveform?: number[];
 }
 
 interface TimelineScene {
   sceneNumber: number;
   title: string;
   imageUrl?: string;
+  imageOptions?: { url: string }[];
+  selectedOptionIndex?: number;
+  gridUrl?: string | null;
   videoUrl?: string;
   prompt?: string;
   narration?: string;
@@ -56,6 +62,7 @@ type SceneVoiceRecord = {
   voiceId: string;
   audioBase64: string;
   duration: number;
+  waveform?: number[];
 };
 
 type VideoFrameCallbackMetadata = {
@@ -94,6 +101,7 @@ interface VideoTimelineProps {
   sceneCustomDurations?: Record<number, number>;
   onAudioClipsChange?: (clips: Record<string, { start: number; duration: number }>) => void;
   onSceneDurationChange?: (durations: Record<number, number>) => void;
+  onSelectImageOption?: (sceneNumber: number, optionIndex: number) => void;
 }
 
 const statusTokens: Record<SceneStatus, { label: string; tone: "ready" | "pending" | "error" | "idle" }> = {
@@ -102,6 +110,7 @@ const statusTokens: Record<SceneStatus, { label: string; tone: "ready" | "pendin
   error: { label: "Erreur", tone: "error" },
   loading: { label: "Chargement", tone: "pending" },
   empty: { label: "À générer", tone: "idle" },
+  "awaiting-selection": { label: "Choisir", tone: "pending" },
 };
 
 const DEFAULT_SCENE_DURATION = 8;
@@ -118,6 +127,127 @@ const TIME_GRID_LEVELS = [
 ];
 
 const DEFAULT_WAVEFORM = [24, 18, 32, 14, 28, 20, 30, 16, 28, 22, 26, 18, 30, 16, 24, 20];
+const MIN_WAVEFORM_HEIGHT_PERCENT = 6;
+const AUTOMATION_VERTICAL_PADDING = 12;
+
+const resolveClipSceneNumber = (clip: TimelineAudioClip): number | null => {
+  if (typeof clip.sceneNumber === "number" && Number.isFinite(clip.sceneNumber)) {
+    return clip.sceneNumber;
+  }
+  const match = clip.id.match(/(\d+)/);
+  if (!match) {
+    return null;
+  }
+  const parsed = Number(match[1]);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const normalizeWaveform = (values: number[]): number[] => {
+  if (!values.length) {
+    return DEFAULT_WAVEFORM.map(() => 0.5);
+  }
+
+  const max = values.reduce((currentMax, value) => {
+    const amplitude = Math.abs(value);
+    return amplitude > currentMax ? amplitude : currentMax;
+  }, 0);
+
+  if (max <= 0) {
+    return values.map(() => 0);
+  }
+
+  return values.map((value) => {
+    const normalized = Math.abs(value) / max;
+    return Number.isFinite(normalized) ? Math.min(1, Math.max(0, normalized)) : 0;
+  });
+};
+
+const smoothWaveform = (values: number[], windowSize: number) => {
+  const safeWindow = Math.max(1, Math.min(windowSize, values.length));
+  const halfWindow = Math.floor(safeWindow / 2);
+
+  return values.map((_, index) => {
+    let total = 0;
+    let count = 0;
+    for (let offset = -halfWindow; offset <= halfWindow; offset += 1) {
+      const sampleIndex = index + offset;
+      if (sampleIndex >= 0 && sampleIndex < values.length) {
+        total += values[sampleIndex];
+        count += 1;
+      }
+    }
+    return count > 0 ? total / count : values[index];
+  });
+};
+
+const buildAutomationPolyline = (values: number[]) => {
+  if (!values.length) {
+    return "0 50";
+  }
+
+  const availableHeight = 100 - AUTOMATION_VERTICAL_PADDING * 2;
+  if (values.length === 1) {
+    const y = 100 - AUTOMATION_VERTICAL_PADDING - values[0] * availableHeight;
+    return `0 ${y.toFixed(2)} ${values.length - 1} ${y.toFixed(2)}`;
+  }
+
+  return values
+    .map((value, index) => {
+      const y = 100 - AUTOMATION_VERTICAL_PADDING - value * availableHeight;
+      return `${index} ${Math.min(100 - AUTOMATION_VERTICAL_PADDING, Math.max(AUTOMATION_VERTICAL_PADDING, Number(y.toFixed(2))))}`;
+    })
+    .join(" ");
+};
+
+const WaveformPreview = ({ waveform }: { waveform?: number[] }) => {
+  const baseWaveform = waveform && waveform.length > 0 ? waveform : DEFAULT_WAVEFORM;
+  const normalized = normalizeWaveform(baseWaveform);
+  const smoothingWindow = Math.max(3, Math.round(normalized.length * 0.12));
+  const smoothed = smoothWaveform(normalized, smoothingWindow);
+  const automationPoints = buildAutomationPolyline(smoothed);
+
+  return (
+    <div
+      className="pointer-events-none relative mt-2 h-12 overflow-hidden rounded-lg bg-gradient-to-b from-background/40 via-background/20 to-background/30 shadow-inner shadow-black/20"
+      aria-hidden="true"
+    >
+      <svg
+        className="absolute inset-0 h-full w-full"
+        viewBox={`0 0 ${Math.max(smoothed.length - 1, 1)} 100`}
+        preserveAspectRatio="none"
+      >
+        <polyline
+          fill="none"
+          stroke="currentColor"
+          strokeOpacity={0.65}
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          points={automationPoints}
+        />
+      </svg>
+      <div
+        className="absolute inset-0 flex items-end px-1 pb-1"
+        style={{
+          display: "grid",
+          gridTemplateColumns: `repeat(${normalized.length}, minmax(0, 1fr))`,
+          columnGap: "2px",
+        }}
+      >
+        {normalized.map((value, index) => (
+          <span
+            key={index}
+            className="rounded-full bg-current transition-[height,opacity]"
+            style={{
+              height: `${Math.max(MIN_WAVEFORM_HEIGHT_PERCENT, value * 100)}%`,
+              opacity: 0.35 + value * 0.65,
+            }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+};
 
 const formatTime = (valueInSeconds: number) => {
   const safeValue = Math.max(0, valueInSeconds);
@@ -154,6 +284,7 @@ export const VideoTimeline = ({
   sceneCustomDurations,
   onAudioClipsChange,
   onSceneDurationChange,
+  onSelectImageOption,
 }: VideoTimelineProps) => {
   const [activeScene, setActiveScene] = useState<number | null>(scenes[0]?.sceneNumber ?? null);
   const [playheadTime, setPlayheadTime] = useState(0);
@@ -230,6 +361,25 @@ export const VideoTimeline = ({
     onActiveSceneChange?.(activeScene ?? null);
   }, [activeScene, onActiveSceneChange]);
 
+  const audioClipTimingByScene = useMemo(() => {
+    if (!audioClips?.length) return {} as Record<number, { start: number; duration: number }>;
+
+    const record: Record<number, { start: number; duration: number }> = {};
+    audioClips.forEach((clip) => {
+      const sceneNumber = resolveClipSceneNumber(clip);
+      if (sceneNumber == null) {
+        return;
+      }
+      const start = Math.max(0, clip.start);
+      const duration = Math.max(clip.duration, 0);
+      if (duration <= 0) {
+        return;
+      }
+      record[sceneNumber] = { start, duration };
+    });
+    return record;
+  }, [audioClips]);
+
   const timelineSegments = useMemo(() => {
     if (!scenes.length) return [];
 
@@ -240,13 +390,15 @@ export const VideoTimeline = ({
 
     let cursor = 0;
     return scenes.map((scene) => {
-      // Priority: video duration > custom scene duration > scene duration prop > fallback
-      // NOTE: Voice duration is NOT used for scene duration - audio and scenes are decoupled
+      // Priority: audio clip timing > video duration > custom scene duration > scene duration prop > fallback
+      const audioTiming = audioClipTimingByScene[scene.sceneNumber];
       const videoDuration = videoDurations[scene.sceneNumber];
       const customDuration = sceneCustomDurations?.[scene.sceneNumber];
 
       let candidateDuration: number;
-      if (typeof videoDuration === "number" && Number.isFinite(videoDuration) && videoDuration > 0) {
+      if (audioTiming) {
+        candidateDuration = audioTiming.duration;
+      } else if (typeof videoDuration === "number" && Number.isFinite(videoDuration) && videoDuration > 0) {
         candidateDuration = videoDuration;
       } else if (typeof customDuration === "number" && Number.isFinite(customDuration) && customDuration > 0) {
         candidateDuration = customDuration;
@@ -254,8 +406,8 @@ export const VideoTimeline = ({
         candidateDuration = scene.durationSeconds ?? fallbackDuration;
       }
 
-      const duration = Math.max(candidateDuration, 3);
-      const start = scene.startOffset ?? cursor;
+      const duration = audioTiming ? candidateDuration : Math.max(candidateDuration, 3);
+      const start = audioTiming ? audioTiming.start : scene.startOffset ?? cursor;
       const end = start + duration;
       cursor = Math.max(cursor, end);
 
@@ -266,7 +418,7 @@ export const VideoTimeline = ({
         end,
       };
     });
-  }, [sceneCustomDurations, scenes, timelineDuration, videoDurations]);
+  }, [audioClipTimingByScene, sceneCustomDurations, scenes, timelineDuration, videoDurations]);
 
   const computedDuration = timelineSegments.length ? timelineSegments[timelineSegments.length - 1].end : 0;
   const totalDuration = Math.max(timelineDuration ?? 0, computedDuration);
@@ -543,6 +695,28 @@ const stopAnimations = useCallback(() => {
     () => scenes.find((scene) => scene.sceneNumber === activeScene) ?? null,
     [activeScene, scenes]
   );
+
+  const previewImageUrl = useMemo(() => {
+    if (!selectedScene) return null;
+    if (selectedScene.imageUrl) return selectedScene.imageUrl;
+
+    if (
+      typeof selectedScene.selectedOptionIndex === "number" &&
+      selectedScene.imageOptions?.[selectedScene.selectedOptionIndex]
+    ) {
+      return selectedScene.imageOptions[selectedScene.selectedOptionIndex]!.url;
+    }
+
+    if (selectedScene.imageOptions?.[0]) {
+      return selectedScene.imageOptions[0]!.url;
+    }
+
+    if (selectedScene.gridUrl) {
+      return selectedScene.gridUrl;
+    }
+
+    return null;
+  }, [selectedScene]);
 
   const selectedSceneNumber = selectedScene?.sceneNumber ?? null;
   const selectedSegmentStart = selectedSegment?.start ?? null;
@@ -972,6 +1146,7 @@ const stopAnimations = useCallback(() => {
     error: "border-destructive/50",
     loading: "border-primary/40",
     empty: "border-border/60",
+    "awaiting-selection": "border-amber-400/60",
   };
 
   const statusIndicatorClasses: Record<SceneStatus, string> = {
@@ -980,6 +1155,7 @@ const stopAnimations = useCallback(() => {
     error: "bg-destructive",
     loading: "bg-primary/70",
     empty: "bg-border",
+    "awaiting-selection": "bg-amber-400",
   };
 
   return (
@@ -1101,15 +1277,7 @@ const stopAnimations = useCallback(() => {
                               {formatTime(start)} - {formatTime(start + duration)}
                             </span>
                           </div>
-                          <div className="flex h-6 items-end gap-1 text-emerald-400 pointer-events-none">
-                            {DEFAULT_WAVEFORM.map((height, index) => (
-                              <span
-                                key={index}
-                                className="flex-1 rounded-full bg-current/70 transition-colors"
-                                style={{ height: `${height / 2}px` }}
-                              />
-                            ))}
-                          </div>
+                          <WaveformPreview waveform={clip.waveform} />
 
                           {/* Right resize handle */}
                           <div
@@ -1244,9 +1412,9 @@ const stopAnimations = useCallback(() => {
                     preload="auto"
                     ref={previewVideoRef ?? undefined}
                   />
-                ) : selectedScene.imageUrl ? (
+                ) : previewImageUrl ? (
                   <img
-                    src={selectedScene.imageUrl}
+                    src={previewImageUrl}
                     alt={selectedScene.title}
                     className="absolute inset-0 h-full w-full object-cover"
                   />
@@ -1255,6 +1423,48 @@ const stopAnimations = useCallback(() => {
                 )}
               </div>
             </div>
+            {selectedScene.imageOptions?.length ? (
+              <div className="grid grid-cols-2 gap-2">
+                {selectedScene.imageOptions.map((option, index) => {
+                  const isSelected = index === selectedScene.selectedOptionIndex;
+                  return (
+                    <button
+                      key={`${selectedScene.sceneNumber}-option-${index}`}
+                      type="button"
+                      onClick={() => onSelectImageOption?.(selectedScene.sceneNumber, index)}
+                      className={cn(
+                        "relative aspect-[9/16] overflow-hidden rounded-lg border transition-all focus:outline-none",
+                        isSelected
+                          ? "border-primary ring-2 ring-primary/60"
+                          : "border-border/50 hover:border-primary/50"
+                      )}
+                    >
+                      <img
+                        src={option.url}
+                        alt={`Option ${index + 1}`}
+                        className="absolute inset-0 h-full w-full object-cover"
+                        loading="lazy"
+                      />
+                      <span className="absolute left-2 top-2 rounded-full bg-background/80 px-2 py-[2px] text-[10px] font-semibold text-foreground">
+                        #{index + 1}
+                      </span>
+                      {isSelected && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-primary/15">
+                          <Check className="h-6 w-6 text-primary" />
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
+            {selectedScene.imageOptions?.length &&
+              (typeof selectedScene.selectedOptionIndex !== "number" ||
+                selectedScene.selectedOptionIndex < 0) && (
+                <p className="text-[11px] text-muted-foreground">
+                  Choisissez une proposition pour valider cette scène.
+                </p>
+              )}
             <div className="space-y-3">
               <div className="space-y-1 text-sm">
                 <p className="font-semibold text-foreground">{selectedScene.title}</p>

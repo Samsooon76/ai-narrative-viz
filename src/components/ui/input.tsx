@@ -3,7 +3,7 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 
 const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
-  ({ className, type, ...props }, ref) => {
+  ({ className, type, autoComplete, ...props }, ref) => {
     return (
       <input
         type={type}
@@ -12,6 +12,11 @@ const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
           className,
         )}
         ref={ref}
+        autoComplete={autoComplete ?? "off"}
+        data-lpignore="true"
+        data-bitwarden-ignore="true"
+        data-1p-ignore="true"
+        data-form-type="other"
         {...props}
       />
     );

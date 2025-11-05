@@ -1,242 +1,316 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+const FAL_PROMPT_MAX_LENGTH = 2000;
+const DEFAULT_IMAGE_SIZE = "landscape_16_9";
+const DEFAULT_IMAGE_RESOLUTION = "480p";
+const DEFAULT_IMAGE_COUNT = 4;
+const DEFAULT_GUIDANCE = 3.5;
+const DEFAULT_STEPS = 4;
+const DEFAULT_POLL_INTERVAL_MS = 2000;
+const DEFAULT_TIMEOUT_MS = 240000;
+
+const sanitizeFalPrompt = (value: unknown) => {
+  const raw = typeof value === "string" ? value : "";
+  const collapsed = raw.replace(/\s+/g, " ").trim();
+
+  if (!collapsed) {
+    return { prompt: "", originalLength: 0 } as const;
+  }
+
+  if (collapsed.length <= FAL_PROMPT_MAX_LENGTH) {
+    return { prompt: collapsed, originalLength: collapsed.length } as const;
+  }
+
+  return {
+    prompt: collapsed.slice(0, FAL_PROMPT_MAX_LENGTH),
+    originalLength: collapsed.length,
+  } as const;
+};
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const getFalKey = () => {
+  const key =
+    Deno.env.get("FAL_KEY") ??
+    Deno.env.get("FAL_API_KEY") ??
+    Deno.env.get("FALAI_API_KEY") ??
+    Deno.env.get("FAL_AI_API_KEY");
+
+  if (!key || key.trim().length === 0) {
+    throw new Error("Aucune clé API Fal.ai détectée. Configurez FAL_KEY (ou FAL_API_KEY).");
+  }
+
+  return key.trim();
+};
+
+const getRuntimeConfig = () => {
+  const pollIntervalRaw = Deno.env.get("FAL_IMAGE_POLL_INTERVAL_MS") ?? Deno.env.get("FAL_QUEUE_POLL_INTERVAL_MS");
+  const timeoutRaw = Deno.env.get("FAL_IMAGE_TIMEOUT_MS") ?? Deno.env.get("FAL_QUEUE_TIMEOUT_MS");
+
+  const pollIntervalMs = Number.parseInt(pollIntervalRaw ?? "", 10);
+  const timeoutMs = Number.parseInt(timeoutRaw ?? "", 10);
+
+  return {
+    pollIntervalMs: Number.isFinite(pollIntervalMs) && pollIntervalMs > 0 ? pollIntervalMs : DEFAULT_POLL_INTERVAL_MS,
+    timeoutMs: Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : DEFAULT_TIMEOUT_MS,
+  } as const;
+};
+
+const waitForFalCompletion = async (
+  statusUrl: string,
+  responseUrl: string,
+  headers: HeadersInit,
+  pollIntervalMs: number,
+  timeoutMs: number,
+) => {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    const statusResponse = await fetch(statusUrl, { headers });
+    if (!statusResponse.ok) {
+      const text = await statusResponse.text();
+      throw new Error(`Fal.ai status request a échoué (${statusResponse.status}): ${text}`);
+    }
+
+    const statusPayload = await statusResponse.json() as { status?: string; state?: string; logs?: Array<{ message?: string }> };
+    const status = (statusPayload.status ?? statusPayload.state ?? "").toString().toUpperCase();
+
+    if (status === "COMPLETED" || status === "FINISHED" || status === "SUCCESS") {
+      const response = await fetch(responseUrl, { headers });
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Fal.ai response request a échoué (${response.status}): ${text}`);
+      }
+      return await response.json() as Record<string, unknown>;
+    }
+
+    if (status === "FAILED" || status === "ERROR") {
+      const logs = Array.isArray(statusPayload.logs) ? statusPayload.logs.map((entry) => entry?.message).filter(Boolean) : [];
+      const joinedLogs = logs.length ? ` Logs: ${logs.join(" | ")}` : "";
+      throw new Error(`Fal.ai a indiqué un échec.${joinedLogs}`);
+    }
+
+    await sleep(pollIntervalMs);
+  }
+
+  throw new Error("Fal.ai n'a pas terminé la génération dans le temps imparti.");
+};
+
+const collectImageUrls = (source: unknown): string[] => {
+  const urls = new Set<string>();
+  const visited = new WeakSet<object>();
+
+  const pushUrl = (value: unknown) => {
+    if (typeof value !== "string") return;
+    const trimmed = value.trim();
+    if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+      urls.add(trimmed);
+    }
+  };
+
+  const inspect = (value: unknown) => {
+    if (!value) return;
+
+    if (typeof value === "string") {
+      pushUrl(value);
+      return;
+    }
+
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        inspect(item);
+      }
+      return;
+    }
+
+    if (typeof value === "object") {
+      const record = value as Record<string, unknown>;
+
+      if (visited.has(record)) {
+        return;
+      }
+      visited.add(record);
+
+      pushUrl(record.url);
+      pushUrl(record.image_url);
+      pushUrl(record.imageUrl);
+      pushUrl(record.image);
+      pushUrl(record.secure_url);
+
+      const nestedKeys = [
+        "images",
+        "imageUrls",
+        "image_urls",
+        "output",
+        "outputs",
+        "result",
+        "data",
+        "predictions",
+      ];
+
+      for (const key of nestedKeys) {
+        if (key in record) {
+          inspect(record[key]);
+        }
+      }
+    }
+  };
+
+  inspect(source);
+  return Array.from(urls);
 };
 
 serve(async (req) => {
-  console.log('=== generate-image called ===');
-  console.log('Method:', req.method);
-
-  if (req.method === 'OPTIONS') {
+  if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    console.log('Parsing request body...');
+    const body = await req.json();
     const {
       prompt,
       sceneTitle,
       styleId,
       stylePrompt,
-    } = await req.json();
-    console.log('Request parsed successfully');
-    
-    if (!prompt) {
-      return new Response(
-        JSON.stringify({ error: 'Le prompt est requis' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
+      numImages,
+      guidanceScale,
+      numInferenceSteps,
+      imageSize,
+      imageResolution,
+    } = body ?? {};
 
-    const FAL_KEY =
-      Deno.env.get('FAL_KEY') ??
-      Deno.env.get('FAL_API_KEY') ??
-      Deno.env.get('FALAI_API_KEY') ??
-      Deno.env.get('FAL_AI_API_KEY');
-
-    if (!FAL_KEY) {
-      throw new Error('Aucune clé API Fal.ai détectée. Configurez FAL_KEY (ou FAL_API_KEY) avec votre token.');
-    }
-
-    console.log('Génération image avec Minimax pour:', sceneTitle, 'style:', styleId);
-
-    const DEFAULT_STYLE_ID = 'nano-banana';
-    const STYLE_LIBRARY: Record<string, string> = {
-      'arcane': 'Arcane animated series look, painterly steampunk lighting, vivid rim glow, expressive portraits, layered brush textures.',
-      'desaturated-toon': 'Muted atmospheric 2D toon, long expressive shadows, soft mist, refined silhouettes, understated palette.',
-      'digital-noir': 'Angular neo-noir graphic novel, hard-edged shading, geometric shapes, teal-green monochrome, cinematic contrast.',
-      'bold-graphic': 'Bold poster-like comic art, thick silhouettes, crisp graphic blocks, red-and-black high contrast, strong negative space.',
-      'muted-adventure': 'Soft cinematic adventure painting, wide depth, earthy palette, atmospheric haze, story-rich environmental cues.',
-      'whimsical-cartoon': 'Playful surreal animation style, exaggerated proportions, bouncing curves, candy colors, lively expressions.',
-      'late-night-action': 'Nighttime action anime, backlit silhouettes, sharp highlights, tense motion, neon reflections.',
-      [DEFAULT_STYLE_ID]: 'Nano Banana stylized anime realism, saturated neon palette, hyper detailed characters, precise contour lines, motion-friendly staging, dynamic lighting.'
-    };
-
-    const resolvedStyleId = (typeof styleId === 'string' && styleId.trim().length > 0) ? styleId.trim() : DEFAULT_STYLE_ID;
-    const fallbackStyle = STYLE_LIBRARY[resolvedStyleId] ?? STYLE_LIBRARY[DEFAULT_STYLE_ID];
-    const resolvedStylePrompt = (typeof stylePrompt === 'string' && stylePrompt.trim().length > 0)
-      ? stylePrompt.trim()
-      : fallbackStyle;
-
-    // Construire le prompt complet pour Minimax
-    const fullPrompt = `Create a highly dynamic 9:16 portrait illustration ready for animation.\n\nSTYLE FOCUS: ${resolvedStylePrompt}\n\nINSTRUCTIONS:\n- Emphasize cinematic lighting, believable anatomy, and motion-friendly silhouettes.\n- Add environmental depth cues that support parallax for animation.\n\nSCENE TO ILLUSTRATE:\n${prompt}`;
-
-    // Limiter le prompt à 1500 caractères (max Minimax)
-    const truncatedPrompt = fullPrompt.length > 1500 ? fullPrompt.substring(0, 1500) : fullPrompt;
-
-    console.log('Appel fal.ai avec prompt longueur:', truncatedPrompt.length);
-
-    const falHeaders = {
-      'Authorization': `Key ${FAL_KEY}`,
-      'Content-Type': 'application/json',
-    };
-
-    // Envoyer la requête à la queue
-    const initialResponse = await fetch(
-      'https://queue.fal.run/fal-ai/minimax/image-01',
-      {
-        method: 'POST',
-        headers: falHeaders,
-        body: JSON.stringify({
-          prompt: truncatedPrompt,
-          aspect_ratio: '9:16',
-          num_images: 1,
-        }),
-      },
-    );
-
-    if (!initialResponse.ok) {
-      const errorText = await initialResponse.text();
-      console.error('Erreur API Minimax:', initialResponse.status, errorText);
-      let reason = `Minimax error ${initialResponse.status}`;
-      try {
-        const parsed = JSON.parse(errorText);
-        const message = parsed?.error?.message || parsed?.message || parsed?.error || parsed;
-        if (typeof message === 'string') {
-          reason += `: ${message}`;
-        }
-      } catch (_) {
-        if (errorText) {
-          reason += `: ${errorText}`;
-        }
-      }
-      throw new Error(reason);
-    }
-
-    const queueData = await initialResponse.json() as {
-      status?: string;
-      request_id?: string;
-      status_url?: string;
-    };
-
-    console.log('Requête mise en queue:', queueData.request_id, 'Status:', queueData.status);
-
-    if (!queueData.status_url) {
-      console.error('Réponse queue:', JSON.stringify(queueData, null, 2));
-      throw new Error('Pas de status_url retourné par Minimax');
-    }
-
-    // Attendre que l'image soit générée (polling)
-    let finalData: any = null;
-    let attempts = 0;
-    const maxAttempts = 120; // 2 minutes avec 1s entre chaque
-
-    while (attempts < maxAttempts) {
-      attempts++;
-
-      const statusResponse = await fetch(queueData.status_url, {
-        method: 'GET',
-        headers: falHeaders,
+    if (typeof prompt !== "string" || prompt.trim().length === 0) {
+      return new Response(JSON.stringify({ error: "Le prompt est requis" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
-
-      if (!statusResponse.ok) {
-        console.error('Erreur récupération status:', statusResponse.status);
-        throw new Error(`Erreur lors du polling du statut: ${statusResponse.status}`);
-      }
-
-      finalData = await statusResponse.json();
-      console.log(`[Tentative ${attempts}] Status: ${finalData.status}`);
-
-      if (finalData.status === 'COMPLETED') {
-        console.log('Image générée avec succès!');
-        break;
-      }
-
-      if (finalData.status === 'FAILED') {
-        throw new Error(`Génération échouée: ${JSON.stringify(finalData.error || 'Erreur inconnue')}`);
-      }
-
-      // Attendre 1 seconde avant de retenter
-      await new Promise(resolve => setTimeout(resolve, 1000));
     }
 
-    if (!finalData || finalData.status !== 'COMPLETED') {
-      throw new Error('Timeout: la génération a pris trop longtemps');
+    const { prompt: sanitizedPrompt, originalLength } = sanitizeFalPrompt(prompt);
+    if (!sanitizedPrompt) {
+      return new Response(JSON.stringify({ error: "Prompt Fal.ai vide après normalisation" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    console.log('Récupération de la réponse complète depuis response_url...');
-    const resultResponse = await fetch(finalData.response_url, {
-      method: 'GET',
+    if (originalLength > sanitizedPrompt.length) {
+      console.log(`Prompt Fal.ai tronqué de ${originalLength} à ${sanitizedPrompt.length} caractères.`);
+    }
+
+    const falKey = getFalKey();
+    const { pollIntervalMs, timeoutMs } = getRuntimeConfig();
+
+    const requestedImageCount = typeof numImages === "number" && Number.isFinite(numImages) && numImages > 0
+      ? Math.min(Math.max(Math.floor(numImages), 1), 8)
+      : DEFAULT_IMAGE_COUNT;
+
+    const falPayload: Record<string, unknown> = {
+      prompt: sanitizedPrompt,
+      image_size: typeof imageSize === "string" && imageSize.trim().length > 0 ? imageSize.trim() : DEFAULT_IMAGE_SIZE,
+      image_resolution: typeof imageResolution === "string" && imageResolution.trim().length > 0
+        ? imageResolution.trim()
+        : DEFAULT_IMAGE_RESOLUTION,
+      num_images: requestedImageCount,
+    };
+
+    if (typeof guidanceScale === "number" && Number.isFinite(guidanceScale)) {
+      falPayload.guidance_scale = guidanceScale;
+    } else {
+      falPayload.guidance_scale = DEFAULT_GUIDANCE;
+    }
+
+    if (typeof numInferenceSteps === "number" && Number.isFinite(numInferenceSteps)) {
+      falPayload.num_inference_steps = numInferenceSteps;
+    } else {
+      falPayload.num_inference_steps = DEFAULT_STEPS;
+    }
+
+    console.log("Déclenchement Fal.ai flux/schnell pour:", sceneTitle ?? "scène sans titre");
+
+    const falHeaders: HeadersInit = {
+      "Authorization": `Key ${falKey}`,
+      "Content-Type": "application/json",
+    };
+
+    const queueResponse = await fetch("https://queue.fal.run/fal-ai/flux/schnell", {
+      method: "POST",
       headers: falHeaders,
+      body: JSON.stringify(falPayload),
     });
 
-    if (!resultResponse.ok) {
-      throw new Error(`Erreur récupération résultat: ${resultResponse.status}`);
-    }
-
-    const resultData = await resultResponse.json();
-    console.log('Résultat complet:', JSON.stringify(resultData, null, 2));
-
-    const images = resultData?.images ?? [];
-    const firstImage = images[0];
-
-    if (!firstImage?.url) {
-      console.error('Structure de la réponse Minimax:', JSON.stringify(resultData, null, 2));
-      throw new Error('Aucune image générée par Minimax');
-    }
-
-    const imageUrl = firstImage.url;
-    const mimeType = firstImage.content_type ?? 'image/jpeg';
-
-    // Récupérer l'image depuis l'URL fournie par Minimax
-    console.log('Téléchargement de l\'image depuis Minimax...');
-    const imageResponse = await fetch(imageUrl);
-    if (!imageResponse.ok) {
-      throw new Error(`Impossible de récupérer l'image de Minimax (${imageResponse.status})`);
-    }
-
-    const imageBuffer = await imageResponse.arrayBuffer();
-    const imageUint8 = new Uint8Array(imageBuffer);
-
-    console.log('Image générée avec succès, upload vers Storage...');
-
-    // Upload vers Supabase Storage
-    const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2.7.1');
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
-
-    // Créer un nom de fichier unique
-    const fileName = `scene-${sceneTitle?.replace(/[^a-z0-9]/gi, '-').toLowerCase() || Date.now()}-${Date.now()}.png`;
-    const filePath = `${fileName}`;
-
-    // Upload vers le bucket generated-images
-    const { data: uploadData, error: uploadError } = await supabase.storage
-      .from('generated-images')
-      .upload(filePath, imageUint8, {
-        contentType: mimeType,
-        cacheControl: '3600',
-        upsert: false
+    if (!queueResponse.ok) {
+      const errorText = await queueResponse.text();
+      console.error("Erreur Fal.ai (queue):", queueResponse.status, errorText);
+      return new Response(JSON.stringify({ error: errorText || queueResponse.statusText }), {
+        status: queueResponse.status || 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
-
-    if (uploadError) {
-      console.error('Erreur upload Storage:', uploadError);
-      throw new Error(`Erreur upload: ${uploadError.message}`);
     }
 
-    // Obtenir l'URL publique
-    const { data: { publicUrl } } = supabase.storage
-      .from('generated-images')
-      .getPublicUrl(filePath);
+    const queuePayload = await queueResponse.json() as { status_url?: string; response_url?: string; request_id?: string; error?: unknown };
+    console.log("Fal.ai queue payload:", queuePayload);
+    const statusUrl = queuePayload.status_url;
+    const responseUrl = queuePayload.response_url;
+    const requestId = queuePayload.request_id;
 
-    console.log('Image uploadée avec succès:', publicUrl);
+    if (!statusUrl || !responseUrl) {
+      console.error("Réponse queue Fal.ai invalide:", queuePayload);
+      return new Response(JSON.stringify({ error: "Réponse Fal.ai sans URLs de suivi." }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
-    return new Response(
-      JSON.stringify({ imageUrl: publicUrl, styleId: resolvedStyleId, stylePrompt: resolvedStylePrompt }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    let falResult: Record<string, unknown>;
+    try {
+      falResult = await waitForFalCompletion(statusUrl, responseUrl, falHeaders, pollIntervalMs, timeoutMs);
+      console.log("Fal.ai result payload received");
+    } catch (falError) {
+      console.error("Erreur Fal.ai durant le polling:", falError);
+      const message = falError instanceof Error ? falError.message : "Erreur Fal.ai durant la génération.";
+      return new Response(JSON.stringify({ error: message }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
+    const imageUrls = collectImageUrls(falResult);
+
+    if (!imageUrls.length) {
+      console.error("Réponse Fal.ai sans URLs d'image:", falResult);
+      return new Response(JSON.stringify({ error: "Fal.ai n'a retourné aucune image exploitable." }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const trimmedUrls = imageUrls.slice(0, requestedImageCount);
+    console.log(`Fal.ai returned ${trimmedUrls.length} image URLs`);
+
+    const responseBody = {
+      recordId: requestId ?? null,
+      gridUrl: null,
+      options: trimmedUrls,
+      prompt: sanitizedPrompt,
+      styleId,
+      stylePrompt,
+    };
+
+    return new Response(JSON.stringify(responseBody), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   } catch (error) {
-    console.error('Erreur dans generate-image:', error);
-    console.error('Stack trace:', error instanceof Error ? error.stack : 'N/A');
-    const errorMessage = error instanceof Error ? error.message : 'Erreur interne';
-    console.error('Message final:', errorMessage);
-    return new Response(
-      JSON.stringify({ error: errorMessage, details: String(error) }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    console.error("Erreur interne generate-image:", error);
+    const message = error instanceof Error ? error.message : "Erreur interne";
+    return new Response(JSON.stringify({ error: message }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 });

@@ -2,6 +2,102 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer components {
+  .speech-bubble {
+    background: hsl(var(--popover));
+    border: 2px solid hsl(var(--primary));
+    position: relative;
+    box-shadow: 
+      0 0 0 1px hsl(var(--primary) / 0.2),
+      0 8px 24px -4px rgba(0, 0, 0, 0.5),
+      0 4px 8px -2px rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(8px);
+    animation: speechBubbleIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    transform-origin: bottom center;
+  }
+  
+  /* Animation de fermeture */
+  .speech-bubble[data-state="closed"],
+  .speech-bubble.closing {
+    animation: speechBubbleOut 0.25s cubic-bezier(0.55, 0.055, 0.675, 0.19) forwards;
+  }
+  
+  /* Queue de la bulle pointant vers le bas et alignée avec le centre du bouton */
+  .speech-bubble::after {
+    content: '';
+    position: absolute;
+    bottom: -10px;
+    left: 50%;
+    transform: translateX(-50%) rotate(45deg);
+    width: 14px;
+    height: 14px;
+    border-right: 2px solid hsl(var(--primary));
+    border-bottom: 2px solid hsl(var(--primary));
+    background: hsl(var(--popover));
+    box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+    animation: speechBubbleTailIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) 0.15s forwards;
+    opacity: 0;
+  }
+  
+  /* Correction pour que la queue soit bien connectée */
+  .speech-bubble::before {
+    content: '';
+    position: absolute;
+    bottom: -9px;
+    left: 50%;
+    transform: translateX(-50%) rotate(45deg);
+    width: 12px;
+    height: 12px;
+    background: hsl(var(--popover));
+    z-index: 1;
+    animation: speechBubbleTailIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) 0.15s forwards;
+    opacity: 0;
+  }
+}
+
+@keyframes speechBubbleIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.75) translateY(10px);
+    filter: blur(4px);
+  }
+  50% {
+    transform: scale(1.03) translateY(-3px);
+    filter: blur(1px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+    filter: blur(0);
+  }
+}
+
+@keyframes speechBubbleOut {
+  0% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.85) translateY(5px);
+    filter: blur(2px);
+  }
+}
+
+@keyframes speechBubbleTailIn {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) rotate(45deg) scale(0.3);
+  }
+  60% {
+    transform: translateX(-50%) rotate(45deg) scale(1.1);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(-50%) rotate(45deg) scale(1);
+  }
+}
+
 /* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
 All colors MUST be HSL.
 */

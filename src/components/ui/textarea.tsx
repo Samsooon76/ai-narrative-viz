@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 
 export type TextareaProps = React.TextareaHTMLAttributes<HTMLTextAreaElement>;
 
-const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(({ className, ...props }, ref) => {
+const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(({ className, autoComplete, ...props }, ref) => {
   return (
     <textarea
       className={cn(
@@ -12,6 +12,11 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(({ classNa
         className,
       )}
       ref={ref}
+      autoComplete={autoComplete ?? "off"}
+      data-lpignore="true"
+      data-bitwarden-ignore="true"
+      data-1p-ignore="true"
+      data-form-type="other"
       {...props}
     />
   );
